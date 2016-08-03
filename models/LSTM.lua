@@ -17,27 +17,33 @@ local LSTM, parent = torch.class('sentenceSim.LSTM', 'nn.Module')
 function LSTM:__init(config)
     parent.__init(self)
 
-    self.in_dim = config.in_dim
+    self.in_dim = config.in_dim or 200
     self.mem_dim = config.mem_dim or 200
-    self.gate_output = config.gate_output
-    if self.gate_output == nil then self.gate_output = true end
-
+    self.batch_size = config.batch_size or 100
+    self.seq_length = config.seq_length or 20
+    self.gpuidx = config.gpuidx or 0
     self.master_cell = self:new_cell()
-    self.depth = 0
-    self.cells = {}  -- table of cells in a roll-out
+    self.cells = self:clone_many_times(self.seq_length) -- table of cells in a roll-out
 
     -- initial (t = 0) states for forward propagation and initial error signals
     -- for backpropagation
-    local c_init = torch.zeros(self.mem_dim)
-    local h_init = torch.zeros(self.mem_dim)
-    local c_grad = torch.zeros(self.mem_dim)
-    local h_grad = torch.zeros(self.mem_dim)
+    local c_init = torch.zeros(self.batch_size,self.mem_dim)
+    local h_init = torch.zeros(self.batch_size,self.mem_dim)
+    local c_grad = torch.zeros(self.batch_size,self.mem_dim)
+    local h_grad = torch.zeros(self.batch_size,self.mem_dim)
     self.initial_values = {c_init, h_init}
     self.gradInput = {
-        torch.zeros(self.in_dim),
+        torch.zeros(self.batch_size,self.in_dim),
         c_grad,
         h_grad
     }
+    if self.gpuidx > 0 then
+        self.initial_values[1] = self.initial_values[1]:cl()
+        self.initial_values[2] = self.initial_values[2]:cl()
+        self.gradInput[1] = self.gradInput[1]:cl()
+        self.gradInput[2] = self.gradInput[2]:cl()
+        self.gradInput[3] = self.gradInput[3]:cl()
+    end
 end
 
 -- Instantiate a new LSTM cell.
@@ -63,33 +69,40 @@ function LSTM:new_cell()
     local h = nn.CMulTable()({o_g,nn.Tanh()(c)})
     local cell = nn.gModule({input, c_p, h_p}, {c, h})
 
-    -- share parameters
-    if self.master_cell then
-        self:share_params(cell, self.master_cell)
+    if self.gpuidx > 0 then
+        return cell:cl()
+    else
+        return cell
     end
-    return cell
+
+end
+
+function LSTM:clone_many_times(seq_length)
+    local cells = {}
+    for i = 1 , seq_length do
+        cells[i] = self:new_cell()
+        if self.master_cell then
+            share_params(cells[i], self.master_cell)
+        end
+    end
+    return cells
 end
 
 -- Forward propagate.
 -- inputs: T x in_dim tensor, where T is the number of time steps.
 -- reverse: if true, read the input from right to left (useful for bidirectional LSTMs).
 -- Returns the final hidden state of the LSTM.
-function LSTM:forward(inputs, reverse)
-    local size = inputs:size(1)
+function LSTM:forward(inputs)
     --print (size)
-    local output = torch.zeros(size,self.mem_dim)
+    local output
     --print (inputs)
-    for t = 1, size do
-        local input = reverse and inputs[size - t + 1] or inputs[t]
-        self.depth = self.depth + 1
-        local cell = self.cells[self.depth]
-        if cell == nil then
-            cell = self:new_cell()
-            self.cells[self.depth] = cell
-        end
+    for t = 1, self.seq_length do
+        local input = inputs[t]
+        local cell = self.cells[t]
         local prev_output
-        if self.depth > 1 then
-            prev_output = self.cells[self.depth - 1].output
+        if t > 1 then
+            prev_output = self.cells[t - 1].output
+            --print (prev_output[2])
         else
             prev_output = self.initial_values
         end
@@ -98,7 +111,7 @@ function LSTM:forward(inputs, reverse)
         local c, h = unpack(outputs)
         --print (c)
         --print (h)
-        output[t] = h
+        output = h
     end
     return output
 end
@@ -108,30 +121,21 @@ end
 -- grad_outputs: T x num_layers x mem_dim tensor.
 -- reverse: if true, read the input from right to left.
 -- Returns the gradients with respect to the inputs (in the same order as the inputs).
-function LSTM:backward(inputs, grad_outputs, reverse)
-    local size = inputs:size(1)
-    if self.depth == 0 then
-        error("No cells to backpropagate through")
-    end
+function LSTM:backward(inputs, grad_outputs)
 
-    local input_grads = torch.Tensor(inputs:size())
-    for t = size, 1, -1 do
-        local input = reverse and inputs[size - t + 1] or inputs[t]
-        local grad_output = reverse and grad_outputs[size - t + 1] or grad_outputs[t]
-        local cell = self.cells[self.depth]
+    local input_grads = {}
+
+    for t = self.seq_length, 1, -1 do
+        local input = inputs[t]
+        local grad_output = grad_outputs[t]
+        local cell = self.cells[t]
         local grads = {self.gradInput[2], self.gradInput[3]}
         grads[2]:add(grad_output)
         --print (grads[2])
-        local prev_output = (self.depth > 1) and self.cells[self.depth - 1].output
-                or self.initial_values
+        local prev_output = (t > 1) and self.cells[t - 1].output or self.initial_values
         self.gradInput = cell:backward({input, prev_output[1], prev_output[2]}, grads)
-        if reverse then
-            input_grads[size - t + 1] = self.gradInput[1]
-        else
-            input_grads[t] = self.gradInput[1]
-        end
-
-        self.depth = self.depth - 1
+        --print (self.gradInput[1])
+        input_grads[t] = self.gradInput[1]
     end
     self:forget() -- important to clear out state
     return input_grads
@@ -148,24 +152,9 @@ end
 
 -- Clear saved gradients
 function LSTM:forget()
-    self.depth = 0
     for i = 1, #self.gradInput do
         self.gradInput[i]:zero()
     end
 end
 
-function LSTM:share_params(cell, src)
-    if torch.type(cell) == 'nn.gModule' then
-        for i = 1, #cell.forwardnodes do
-            local node = cell.forwardnodes[i]
-            if node.data.module then
-                node.data.module:share(src.forwardnodes[i].data.module,
-                    'weight', 'bias', 'gradWeight', 'gradBias')
-            end
-        end
-    elseif torch.isTypeOf(cell, 'nn.Module') then
-        cell:share(src, 'weight', 'bias', 'gradWeight', 'gradBias')
-    else
-        error('parameters cannot be shared for this input')
-    end
-end
+
