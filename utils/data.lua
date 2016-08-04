@@ -6,36 +6,14 @@
 -- To change this template use File | Settings | File Templates.
 --
 
+
+
 function sentenceSim.read_embedding(vocab_path, emb_path)
-    local vocab = sentenceSim.read_vocab(vocab_path)
+    local vocab = sentenceSim.Vocab(vocab_path)
     local embedding = torch.load(emb_path):double()
     return vocab, embedding
 end
 
-function sentenceSim.read_vocab(vocab_path)
-    local vocab = {}
-    vocab.size = 0
-    vocab._index = {}
-    vocab._tokens = {}
-
-    local file = io.open(vocab_path)
-    while true do
-        local line = file:read()
-        if line == nil then break end
-        vocab.size = vocab.size + 1
-
-        local token_line = stringx.split(line, ' ')
-        if #token_line ~= 1 then
-            vocab._tokens[vocab.size] = token_line[1]
-            vocab._index[token_line[1]] = vocab.size
-        else
-            vocab._tokens[vocab.size] = line
-            vocab._index[line] = vocab.size
-        end
-    end
-    file:close()
-    return vocab
-end
 
 
 function sentenceSim.load_data(data_path,vocab,batch_size,seq_length)
@@ -66,9 +44,11 @@ function sentenceSim.read_batch(file,vocab,batch_size,seq_length)
         local items = stringx.split(line, '\t')
         local sent1_tensor = sentenceSim.read_tokens_tensor_and_padding(items[3],vocab,seq_length)
         local sent2_tensor = sentenceSim.read_tokens_tensor_and_padding(items[4],vocab,seq_length)
-        if sent1_tensor ~= nil and sent2_tensor ~= nil then
+        local label = sentenceSim.process_label(items[5])
+        if sent1_tensor ~= nil and sent2_tensor ~= nil and label ~=nil then
             ldata_matrix[idx + 1] =  sent1_tensor
             rdata_matrix[idx + 1] =  sent2_tensor
+            label_tensor[idx + 1] = label
             idx = idx + 1
         end
     end
@@ -79,6 +59,18 @@ function sentenceSim.read_batch(file,vocab,batch_size,seq_length)
     end
 end
 
+function sentenceSim.process_label(label_tuple)
+    local c = label_tuple:sub(2,2)
+    local v = tonumber(c)
+    if v >= 3 then
+        return 1
+    elseif v == 2 then
+        return nil
+    else
+        return 0
+    end
+end
+
 function sentenceSim.read_tokens_tensor_and_padding(sent,vocab,seq_length)
     local tokens = stringx.split(sent, ' ')
     local sent_tensor = torch.Tensor(seq_length)
@@ -86,13 +78,13 @@ function sentenceSim.read_tokens_tensor_and_padding(sent,vocab,seq_length)
         return nil
     else
         for i = 1, #tokens do
-            if vocab._index[tokens[i]] == nil then
-                sent_tensor[i] = vocab._index['#UNKNOWN#']
+            if vocab:index[tokens[i]] == nil then
+                sent_tensor[i] = vocab.unk_index
             else
-                sent_tensor[i] = vocab._index[tokens[i]]
+                sent_tensor[i] = vocab:index[tokens[i]]
             end
         end
     end
-    sent_tensor = nn.Padding(1,#tokens - seq_length,1,1)(sent_tensor)
+    sent_tensor = nn.Padding(1,#tokens - seq_length,1,vocab.pad_index)(sent_tensor)
     return sent_tensor
 end

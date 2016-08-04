@@ -41,14 +41,39 @@ local dev_path = opt.data_dir..'/dev/pit_dev.txt'
 local batch_size = opt.batch_size
 local seq_length = opt.seq_length
 local epochs = opt.max_epochs
+
 local vocab,emb_vecs = sentenceSim.read_embedding(vocab_path, embedding_path)
+local emb_dim = emb_vecs:size(2)
+local ori_vocab = sentenceSim.Vocab(vocab_path)
+
+vocab:add_unk_token()
+vocab:add_pad_token()
+local num_unk = 0
+local vecs = torch.Tensor(vocab.size, emb_dim)
+for i = 1, vocab.size do
+    local w = vocab:token(i)
+    if ori_vocab:contains(w) then
+        vecs[i] = emb_vecs[ori_vocab:index(w)]
+    else
+        num_unk = num_unk + 1
+        if i == vocab.pad_index then
+            vecs[i]:zero()
+        else
+            vecs[i]:uniform(-0.05, 0.05)
+        end
+    end
+end
+ori_vocab = nil
+print('unk count = ' .. num_unk)
 
 local train_data = sentenceSim.load_data(train_path,vocab,batch_size,seq_length)
 local dev_data = sentenceSim.load_data(dev_path,vocab,batch_size,seq_length)
+vocab = nil
+emb_vecs = nil
 collectgarbage()
 -- initialize model
 local model = sentenceSim.LSTMSim{
-    emb_vecs   = emb_vecs,
+    emb_vecs   = vecs,
     structure  = opt.model,
     mem_dim    = opt.hidden_size,
     gpuidx = opt.gpuidx,
@@ -66,8 +91,6 @@ model:print_config()
 
 -- train
 local train_start = sys.clock()
-local best_dev_score = -1.0
-local best_dev_model = model
 header('Training model')
 for i = 1, epochs do
     local start = sys.clock()
@@ -75,12 +98,6 @@ for i = 1, epochs do
     model:train(train_data)
     printf('-- finished epoch in %.2fs\n', sys.clock() - start)
 
-    -- uncomment to compute train scores
-    --[[
-    local train_predictions = model:predict_dataset(train_dataset)
-    local train_score = pearson(train_predictions, train_dataset.labels)
-    printf('-- train score: %.4f\n', train_score)
-    --]]
 
     local dev_predictions = model:predict_dataset(dev_data)
     local dev_score = accuracy(dev_predictions, dev_data.labels,dev_data.size)
