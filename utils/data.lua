@@ -78,10 +78,10 @@ function sentenceSim.read_tokens_tensor_and_padding(sent,vocab,seq_length)
         return nil
     else
         for i = 1, #tokens do
-            if vocab:index[tokens[i]] == nil then
+            if vocab:index(tokens[i]) == nil then
                 sent_tensor[i] = vocab.unk_index
             else
-                sent_tensor[i] = vocab:index[tokens[i]]
+                sent_tensor[i] = vocab:index(tokens[i])
             end
         end
     end
