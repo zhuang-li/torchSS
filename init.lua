@@ -18,6 +18,7 @@ require('lfs')
 require('cjson')
 include('models/LSTM.lua')
 include('utils/data.lua')
+include('utils/Vocab.lua')
 printf = utils.printf
 --include('tests/LSTMTest.lua')
 
