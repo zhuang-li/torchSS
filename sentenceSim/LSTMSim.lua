@@ -7,7 +7,7 @@
 --
 
 
-local LSTMSim = torch.class('treelstm.LSTMSim')
+local LSTMSim = torch.class('sentenceSim.LSTMSim')
 
 function LSTMSim:__init(config)
     self.mem_dim       = config.mem_dim       or 200
@@ -33,14 +33,18 @@ function LSTMSim:__init(config)
     -- word embedding
     self.emb_vecs = config.emb_vecs
     self.emb_dim = config.emb_vecs:size(2)
-
+    self.emb = nn.LookupTable(config.emb_vecs:size(1), self.emb_dim)
+    self.emb.weight:copy(config.emb_vecs)
+    if self.gpuidx > 0 then
+        self.emb = self.emb:cl()
+    end
     -- number of similarity rating classes
 
     -- optimizer configuration
     self.optim_state = { learningRate = self.learning_rate }
 
     -- KL divergence optimization objective
-    if self.gpuidx > 0 then self.criterion = nn.BCECriterion():cuda() else self.criterion = nn.BCECriterion() end
+    if self.gpuidx > 0 then self.criterion = nn.BCECriterion():cl() else self.criterion = nn.BCECriterion() end
 
     -- initialize LSTM model
     local lstm_config = {
@@ -81,7 +85,7 @@ function LSTMSim:new_sim_module()
     :add(nn.Linear(self.sim_nhidden, 1))
     :add(nn.Sigmoid())
     if self.gpuidx > 0 then
-        return sim_module:cuda()
+        return sim_module:cl()
     else
         return sim_module
     end
@@ -91,10 +95,10 @@ function LSTMSim:train(dataset)
     self.llstm:training()
     self.rlstm:training()
 
-    local max_batches = dataset.max_batches
-    local indices = torch.randperm(max_batches)
+    local max_batchs = dataset.max_batchs
+    local indices = torch.randperm(max_batchs)
 
-    for i = 1, max_batches do
+    for i = 1, max_batchs do
 
         xlua.progress((i-1)*self.batch_size, dataset.size)
 
@@ -103,8 +107,8 @@ function LSTMSim:train(dataset)
             local idx = indices[i]
             local targets = dataset.labels[idx]
             local lsent_ids, rsent_ids = dataset.lsents[idx], dataset.rsents[idx]
-            local linputs = self.emb_vecs:forward(lsent_ids)
-            local rinputs = self.emb_vecs:forward(rsent_ids)
+            local linputs = self.emb:forward(lsent_ids)
+            local rinputs = self.emb:forward(rsent_ids)
 
 
             local inputs = {self.llstm:forward(linputs), self.rlstm:forward(rinputs)}
@@ -114,7 +118,7 @@ function LSTMSim:train(dataset)
 
                 -- compute loss and backpropagate
             local loss = self.criterion:forward(output, targets)
-            assert(loss == loss,'loss is NaN.  This usually indicates a bug.  Please check the issues page for existing issues, or create a new issue, if none exist.  Ideally, please state: your operating system, 32-bit/64-bit, your blas version, cpu/cuda/cl?' )
+            assert(loss == loss,'loss is NaN.  This usually indicates a bug.  Please check the issues page for existing issues, or create a new issue, if none exist.  Ideally, please state: your operating system, 32-bit/64-bit, your blas version, cpu/cl/cl?' )
             if loss0 == nil then loss0 = loss end
             assert(loss < loss0 * 3,'loss is exploding, aborting.')
 
@@ -122,7 +126,7 @@ function LSTMSim:train(dataset)
             local rep_grad = self.sim_module:backward(inputs, sim_grad)
             local lgrad,rgrad
             if self.gpuidx > 0 then
-                lgrad = torch.zeros(self.seq_length,self.batch_size,self.in_dim):cuda()
+                lgrad = torch.zeros(self.seq_length,self.batch_size,self.in_dim):cl()
                 lgrad[self.seq_length] = rep_grad[1]
             else
                 rgrad = torch.zeros(self.seq_length,self.batch_size,self.in_dim)
@@ -142,6 +146,9 @@ function LSTMSim:train(dataset)
         end
 
         optim.adagrad(feval, self.params, self.optim_state)
+        if i%10 == 0 then
+            collectgarbage()
+        end
     end
     xlua.progress(dataset.size, dataset.size)
 end
@@ -172,9 +179,9 @@ end
 -- Produce similarity predictions for each sentence pair in the dataset.
 function LSTMSim:predict_dataset(dataset)
     local predictions = {}
-    local max_batches = dataset.max_batches
+    local max_batchs = dataset.max_batchs
 
-    for i = 1, max_batches do
+    for i = 1, max_batchs do
         xlua.progress((i-1)*self.batch_size, dataset.size)
         local lsent, rsent = dataset.lsents[i], dataset.rsents[i]
         predictions[i] = self:predict(lsent, rsent)
