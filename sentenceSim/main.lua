@@ -37,8 +37,8 @@ cmd:text()
 -- parse input params
 opt = cmd:parse(arg)
 
-local embedding_path = opt.data_dir..'/embedding/vectors.th'
-local vocab_path = opt.data_dir..'/embedding/vectors_vocab.txt'
+local embedding_path = opt.data_dir..'/embedding/glove.840B.300d.th'
+local vocab_path = opt.data_dir..'/embedding/glove.840B.vocab'
 local train_path = opt.data_dir..'/train/pit_train.txt'
 local dev_path = opt.data_dir..'/dev/pit_dev.txt'
 local batch_size = opt.batch_size
