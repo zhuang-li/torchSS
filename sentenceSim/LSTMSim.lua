@@ -51,11 +51,12 @@ function LSTMSim:__init(config)
         in_dim = self.emb_dim,
         mem_dim = self.mem_dim,
         seq_length = self.seq_length,
-        gpuidx = self.gpuidx
+        gpuidx = self.gpuidx,
+        batch_size = self.batch_size
     }
 
-    self.llstm = treelstm.LSTM(lstm_config) -- "left" LSTM
-    self.rlstm = treelstm.LSTM(lstm_config) -- "right" LSTM
+    self.llstm = sentenceSim.LSTM(lstm_config) -- "left" LSTM
+    self.rlstm = sentenceSim.LSTM(lstm_config) -- "right" LSTM
 
     -- similarity model
     self.sim_module = self:new_sim_module()
@@ -74,7 +75,7 @@ function LSTMSim:new_sim_module()
     local linput, rinput = nn.Identity()(), nn.Identity()()
     local mult_dist = nn.CMulTable(){linput, rinput}
     local add_dist = nn.Abs()(nn.CSubTable(){linput, rinput})
-    local vec_dist_feats = nn.JoinTable(1){mult_dist, add_dist}
+    local vec_dist_feats = nn.JoinTable(2){mult_dist, add_dist}
     local vecs_to_input = nn.gModule({linput,rinput}, {vec_dist_feats})
 
     -- define similarity model architecture
@@ -97,7 +98,7 @@ function LSTMSim:train(dataset)
 
     local max_batchs = dataset.max_batchs
     local indices = torch.randperm(max_batchs)
-
+    local total_loss = 0
     for i = 1, max_batchs do
 
         xlua.progress((i-1)*self.batch_size, dataset.size)
@@ -106,16 +107,36 @@ function LSTMSim:train(dataset)
             self.grad_params:zero()
             local idx = indices[i]
             local targets = dataset.labels[idx]
+            --print (targets)
             local lsent_ids, rsent_ids = dataset.lsents[idx], dataset.rsents[idx]
-            local linputs = self.emb:forward(lsent_ids)
-            local rinputs = self.emb:forward(rsent_ids)
-
+            --print (lsent_ids)
+            --local a = nn.LookupTable(71293,200)
+            --self.emb:clearState()
+            --local b = a:forward(lsent_ids)
+            --local b = a:forward(lsent_ids)
+            local linputs_init = self.emb:forward(lsent_ids)
+            local linputs = linputs_init:clone()
+            self.emb:clearState()
+            local rinputs_init = self.emb:forward(rsent_ids)
+            local rinputs = rinputs_init:clone()
+            self.emb:clearState()
+            --print (rinputs:size())
+            --print (self.emb.weight:size())
+            --print (linputs:size())
+            --print (rinputs:size())
+            --print (lsent_ids[1][3])
+            --print (rsent_ids[1][3])
+            --print (linputs)
+            --print (rinputs[1][3][10])
 
             local inputs = {self.llstm:forward(linputs), self.rlstm:forward(rinputs)}
 
                 -- compute relatedness
+            --inputs[1] = torch.Tensor(inputs[1]:size()):fill(100)
+            --inputs[2] = torch.zeros(inputs[1]:size()):fill(1000)
+            --print (inputs[1])
             local output = self.sim_module:forward(inputs)
-
+            --print (output)
                 -- compute loss and backpropagate
             local loss = self.criterion:forward(output, targets)
             assert(loss == loss,'loss is NaN.  This usually indicates a bug.  Please check the issues page for existing issues, or create a new issue, if none exist.  Ideally, please state: your operating system, 32-bit/64-bit, your blas version, cpu/cl/cl?' )
@@ -126,10 +147,14 @@ function LSTMSim:train(dataset)
             local rep_grad = self.sim_module:backward(inputs, sim_grad)
             local lgrad,rgrad
             if self.gpuidx > 0 then
-                lgrad = torch.zeros(self.seq_length,self.batch_size,self.in_dim):cl()
+                lgrad = torch.zeros(self.seq_length,self.batch_size,self.mem_dim):cl()
                 lgrad[self.seq_length] = rep_grad[1]
+                rgrad = torch.zeros(self.seq_length,self.batch_size,self.mem_dim):cl()
+                rgrad[self.seq_length] = rep_grad[2]
             else
-                rgrad = torch.zeros(self.seq_length,self.batch_size,self.in_dim)
+                lgrad = torch.zeros(self.seq_length,self.batch_size,self.mem_dim)
+                lgrad[self.seq_length] = rep_grad[1]
+                rgrad = torch.zeros(self.seq_length,self.batch_size,self.mem_dim)
                 rgrad[self.seq_length] = rep_grad[2]
             end
             self.llstm:backward(linputs,lgrad)
@@ -137,11 +162,12 @@ function LSTMSim:train(dataset)
 
 
 
-            self.grad_params:div(self.batch_size)
+            --self.grad_params:div(self.batch_size)
 
             -- regularization
             loss = loss + 0.5 * self.reg * self.params:norm() ^ 2
             self.grad_params:add(self.reg, self.params)
+            total_loss = total_loss + loss
             return loss, self.grad_params
         end
 
@@ -150,7 +176,9 @@ function LSTMSim:train(dataset)
             collectgarbage()
         end
     end
+
     xlua.progress(dataset.size, dataset.size)
+    return total_loss
 end
 
 
@@ -160,19 +188,31 @@ function LSTMSim:predict(lsent_ids, rsent_ids)
     self.llstm:evaluate()
     self.rlstm:evaluate()
     self.grad_params:zero()
-    local linputs = self.emb_vecs:forward(lsent_ids)
-    local rinputs = self.emb_vecs:forward(rsent_ids)
+    local linputs_init = self.emb:forward(lsent_ids)
+    local linputs = linputs_init:clone()
+    --print (linputs[5][2][100])
+    --print (lsent_ids[5][100])
+    self.emb:clearState()
+    local rinputs_init = self.emb:forward(rsent_ids)
+    local rinputs = rinputs_init:clone()
+    --print (rinputs[5][2][100])
+    --print (rsent_ids[5][100])
+    self.emb:clearState()
 
 
     local inputs = {self.llstm:forward(linputs), self.rlstm:forward(rinputs)}
 
     -- compute relatedness
     local output = self.sim_module:forward(inputs)
+    --print (output[2][1])
     local size = output:size(1)
     local prediction = torch.Tensor(size)
+    --print (output)
     for i = 1, size do
-        if output[i] > 0.5 then prediction[i] = 1 else prediction[i] = 0 end
+        --print (i)
+        if output[i][1] > 0.5 then prediction[i] = 1 else prediction[i] = 0 end
     end
+    self.llstm:forget()
     return prediction
 end
 
@@ -186,7 +226,7 @@ function LSTMSim:predict_dataset(dataset)
         local lsent, rsent = dataset.lsents[i], dataset.rsents[i]
         predictions[i] = self:predict(lsent, rsent)
     end
-    xlua.progress(self.size, dataset.size)
+    xlua.progress(dataset.size, dataset.size)
     return predictions
 end
 

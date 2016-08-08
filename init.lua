@@ -16,6 +16,7 @@ require('xlua')
 require('sys')
 require('lfs')
 require('cjson')
+include('sentenceSim/LSTMSim.lua')
 include('models/LSTM.lua')
 include('utils/data.lua')
 include('utils/Vocab.lua')
@@ -36,4 +37,9 @@ function share_params(cell, src)
     else
         error('parameters cannot be shared for this input')
     end
+end
+function header(s)
+    print(string.rep('-', 80))
+    print(s)
+    print(string.rep('-', 80))
 end

@@ -43,6 +43,7 @@ function LSTM:__init(config)
         self.gradInput[1] = self.gradInput[1]:cl()
         self.gradInput[2] = self.gradInput[2]:cl()
         self.gradInput[3] = self.gradInput[3]:cl()
+        --print (self.gradInput[3]:size())
     end
 end
 
@@ -82,6 +83,7 @@ function LSTM:clone_many_times(seq_length)
     for i = 1 , seq_length do
         cells[i] = self:new_cell()
         if self.master_cell then
+            --print ('bbaba')
             share_params(cells[i], self.master_cell)
         end
     end
@@ -106,7 +108,9 @@ function LSTM:forward(inputs)
         else
             prev_output = self.initial_values
         end
+        --print (input)
         --print (prev_output[1])
+        --print (prev_output[2])
         local outputs = cell:forward({input, prev_output[1], prev_output[2]})
         local c, h = unpack(outputs)
         --print (c)
