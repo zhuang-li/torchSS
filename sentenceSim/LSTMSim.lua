@@ -33,8 +33,12 @@ function LSTMSim:__init(config)
     -- word embedding
     self.emb_vecs = config.emb_vecs
     self.emb_dim = config.emb_vecs:size(2)
-    self.emb = nn.LookupTable(config.emb_vecs:size(1), self.emb_dim)
-    self.emb.weight:copy(config.emb_vecs)
+    print (config.emb_vecs:size(1))
+    self.lemb = nn.LookupTable(config.emb_vecs:size(1), self.emb_dim)
+    print (self.lemb.weight:size())
+    self.lemb.weight:copy(config.emb_vecs)
+    self.remb = nn.LookupTable(config.emb_vecs:size(1), self.emb_dim)
+    self.remb.weight:copy(config.emb_vecs)
     if self.gpuidx > 0 then
         self.emb = self.emb:cl()
     end
@@ -47,27 +51,41 @@ function LSTMSim:__init(config)
     if self.gpuidx > 0 then self.criterion = nn.BCECriterion():cl() else self.criterion = nn.BCECriterion() end
 
     -- initialize LSTM model
-    local lstm_config = {
-        in_dim = self.emb_dim,
-        mem_dim = self.mem_dim,
-        seq_length = self.seq_length,
-        gpuidx = self.gpuidx,
-        batch_size = self.batch_size
-    }
 
-    self.llstm = sentenceSim.LSTM(lstm_config) -- "left" LSTM
-    self.rlstm = sentenceSim.LSTM(lstm_config) -- "right" LSTM
 
+    self.llstm = nn.Sequential()
+    self.llstm.layer = {}
+    self.llstm.layer = nn.SeqLSTM(self.mem_dim, self.mem_dim)
+    self.llstm.layer:maskZero()
+    self.llstm:add(self.llstm.layer)
+    self.llstm:add(nn.Select(1,self.seq_length))
+
+    self.rlstm = nn.Sequential()
+    self.rlstm.layer = {}
+    self.rlstm.layer = nn.SeqLSTM(self.mem_dim, self.mem_dim)
+    self.rlstm.layer:maskZero()
+    self.rlstm:add(self.llstm.layer)
+    self.rlstm:add(nn.Select(1,self.seq_length))
     -- similarity model
     self.sim_module = self:new_sim_module()
     local modules = nn.Parallel()
     :add(self.llstm)
+    :add(self.rlstm)
     :add(self.sim_module)
     self.params, self.grad_params = modules:getParameters()
 
     -- share must only be called after getParameters, since this changes the
     -- location of the parameters
-    share_params(self.rlstm, self.llstm)
+    -- share_params(self.rlstm, self.llstm)
+end
+
+function LSTMSim:forwardConnect(llstm, rlstm)
+    rlstm.layer.userPrevCell = llstm.layer.cell[self.seq_length]
+end
+
+--[[ Backward coupling: Copy decoder gradients to encoder LSTM ]]--
+function LSTMSim:backwardConnect(llstm, rlstm)
+    llstm.layer.userNextGradCell = rlstm.layer.userGradPrevCell
 end
 
 function LSTMSim:new_sim_module()
@@ -82,7 +100,7 @@ function LSTMSim:new_sim_module()
     local sim_module = nn.Sequential()
     :add(vecs_to_input)
     :add(nn.Linear(2 * self.mem_dim, self.sim_nhidden))
-    :add(nn.Sigmoid())    -- does better than tanh
+    --:add(nn.Sigmoid())    -- does better than tanh
     :add(nn.Linear(self.sim_nhidden, 1))
     :add(nn.Sigmoid())
     if self.gpuidx > 0 then
@@ -114,12 +132,10 @@ function LSTMSim:train(dataset)
             --self.emb:clearState()
             --local b = a:forward(lsent_ids)
             --local b = a:forward(lsent_ids)
-            local linputs_init = self.emb:forward(lsent_ids)
-            local linputs = linputs_init:clone()
-            self.emb:clearState()
-            local rinputs_init = self.emb:forward(rsent_ids)
-            local rinputs = rinputs_init:clone()
-            self.emb:clearState()
+            local linputs = self.lemb:forward(lsent_ids)
+
+            local rinputs = self.remb:forward(rsent_ids)
+
             --print (rinputs:size())
             --print (self.emb.weight:size())
             --print (linputs:size())
@@ -129,8 +145,10 @@ function LSTMSim:train(dataset)
             --print (linputs)
             --print (rinputs[1][3][10])
 
-            local inputs = {self.llstm:forward(linputs), self.rlstm:forward(rinputs)}
-
+            local linput = self.llstm:forward(linputs)
+            self:forwardConnect(self.llstm,self.rlstm)
+            local rinput = self.rlstm:forward(rinputs)
+            local inputs = {linput,rinput}
                 -- compute relatedness
             --inputs[1] = torch.Tensor(inputs[1]:size()):fill(100)
             --inputs[2] = torch.zeros(inputs[1]:size()):fill(1000)
@@ -141,23 +159,25 @@ function LSTMSim:train(dataset)
             local loss = self.criterion:forward(output, targets)
             assert(loss == loss,'loss is NaN.  This usually indicates a bug.  Please check the issues page for existing issues, or create a new issue, if none exist.  Ideally, please state: your operating system, 32-bit/64-bit, your blas version, cpu/cl/cl?' )
             if loss0 == nil then loss0 = loss end
-            assert(loss < loss0 * 3,'loss is exploding, aborting.')
-
+            --assert(loss < loss0 * 3,'loss is exploding, aborting.')
+            --print (targets)
             local sim_grad = self.criterion:backward(output, targets)
+            --print (sim_grad)
             local rep_grad = self.sim_module:backward(inputs, sim_grad)
             local lgrad,rgrad
             if self.gpuidx > 0 then
-                lgrad = torch.zeros(self.seq_length,self.batch_size,self.mem_dim):cl()
-                lgrad[self.seq_length] = rep_grad[1]
-                rgrad = torch.zeros(self.seq_length,self.batch_size,self.mem_dim):cl()
-                rgrad[self.seq_length] = rep_grad[2]
+                --lgrad = torch.zeros(self.seq_length,self.batch_size,self.mem_dim):cl()
+                lgrad = rep_grad[1]
+                --rgrad = torch.zeros(self.seq_length,self.batch_size,self.mem_dim):cl()
+                rgrad = rep_grad[2]
             else
-                lgrad = torch.zeros(self.seq_length,self.batch_size,self.mem_dim)
-                lgrad[self.seq_length] = rep_grad[1]
-                rgrad = torch.zeros(self.seq_length,self.batch_size,self.mem_dim)
-                rgrad[self.seq_length] = rep_grad[2]
+                --lgrad = torch.zeros(self.seq_length,self.batch_size,self.mem_dim)
+                lgrad = rep_grad[1]
+                --rgrad = torch.zeros(self.seq_length,self.batch_size,self.mem_dim)
+                rgrad = rep_grad[2]
             end
             self.llstm:backward(linputs,lgrad)
+            self:backwardConnect(self.llstm, self.rlstm)
             self.rlstm:backward(rinputs,rgrad)
 
 
@@ -187,22 +207,29 @@ end
 function LSTMSim:predict(lsent_ids, rsent_ids)
     self.llstm:evaluate()
     self.rlstm:evaluate()
+    self.sim_module:evaluate()
     self.grad_params:zero()
-    local linputs_init = self.emb:forward(lsent_ids)
-    local linputs = linputs_init:clone()
-    --print (linputs[5][2][100])
-    --print (lsent_ids[5][100])
-    self.emb:clearState()
-    local rinputs_init = self.emb:forward(rsent_ids)
-    local rinputs = rinputs_init:clone()
-    --print (rinputs[5][2][100])
-    --print (rsent_ids[5][100])
-    self.emb:clearState()
+    local linputs = self.lemb:forward(lsent_ids)
 
+    local rinputs = self.remb:forward(rsent_ids)
 
-    local inputs = {self.llstm:forward(linputs), self.rlstm:forward(rinputs)}
+    --print (rinputs:size())
+    --print (self.emb.weight:size())
+    --print (linputs:size())
+    --print (rinputs:size())
+    --print (lsent_ids[1][3])
+    --print (rsent_ids[1][3])
+    --print (linputs)
+    --print (rinputs[1][3][10])
 
+    local linput = self.llstm:forward(linputs)
+    self:forwardConnect(self.llstm,self.rlstm)
+    local rinput = self.rlstm:forward(rinputs)
+    local inputs = {linput,rinput}
     -- compute relatedness
+    --inputs[1] = torch.Tensor(inputs[1]:size()):fill(100)
+    --inputs[2] = torch.zeros(inputs[1]:size()):fill(1000)
+    --print (inputs[1])
     local output = self.sim_module:forward(inputs)
     --print (output[2][1])
     local size = output:size(1)
@@ -212,7 +239,10 @@ function LSTMSim:predict(lsent_ids, rsent_ids)
         --print (i)
         if output[i][1] > 0.5 then prediction[i] = 1 else prediction[i] = 0 end
     end
+    self.lemb:clearState()
+    self.remb:clearState()
     self.llstm:forget()
+    self.rlstm:forget()
     return prediction
 end
 

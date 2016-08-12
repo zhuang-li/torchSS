@@ -66,6 +66,7 @@ for i = 1, vocab.size do
         end
     end
 end
+--print (vecs[71293])
 --vecs = torch.zeros(vecs:size())
 ori_vocab = nil
 print('unk count = ' .. num_unk)

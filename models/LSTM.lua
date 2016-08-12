@@ -133,10 +133,13 @@ function LSTM:backward(inputs, grad_outputs)
         local input = inputs[t]
         local grad_output = grad_outputs[t]
         local cell = self.cells[t]
-        local grads = {self.gradInput[2], self.gradInput[3]}
+        local grads = {self.gradInput[2], self.gradInput[3] }
+        --print(grad_output)
         grads[2]:add(grad_output)
         --print (grads[2])
         local prev_output = (t > 1) and self.cells[t - 1].output or self.initial_values
+        --print (t)
+        --print (prev_output[1])
         self.gradInput = cell:backward({input, prev_output[1], prev_output[2]}, grads)
         --print (self.gradInput[1])
         input_grads[t] = self.gradInput[1]
