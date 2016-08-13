@@ -14,7 +14,8 @@ function LSTMSim:__init(config)
     self.learning_rate = config.learning_rate or 0.05
     self.batch_size    = config.batch_size    or 100
     self.reg           = config.reg           or 1e-4
-    self.seq_length     = config.seq_length or 20
+    self.seq_length    = config.seq_length    or 20
+    self.finetune      = config.finetune      or true
     self.gpuidx = config.gpuidx or 0
     if self.gpuidx > 0 then
         local ok, cunn = pcall(require, 'clnn')
@@ -33,11 +34,11 @@ function LSTMSim:__init(config)
     -- word embedding
     self.emb_vecs = config.emb_vecs
     self.emb_dim = config.emb_vecs:size(2)
-    print (config.emb_vecs:size(1))
-    self.lemb = nn.LookupTable(config.emb_vecs:size(1), self.emb_dim)
-    print (self.lemb.weight:size())
+    self.vocab_size = config.emb_vecs:size(1)
+    self.lemb = nn.LookupTable(self.vocab_size, self.emb_dim)
+
     self.lemb.weight:copy(config.emb_vecs)
-    self.remb = nn.LookupTable(config.emb_vecs:size(1), self.emb_dim)
+    self.remb = nn.LookupTable(self.vocab_size, self.emb_dim)
     self.remb.weight:copy(config.emb_vecs)
     if self.gpuidx > 0 then
         self.emb = self.emb:cl()
@@ -48,7 +49,7 @@ function LSTMSim:__init(config)
     self.optim_state = { learningRate = self.learning_rate }
 
     -- KL divergence optimization objective
-    if self.gpuidx > 0 then self.criterion = nn.BCECriterion():cl() else self.criterion = nn.BCECriterion() end
+
 
     -- initialize LSTM model
 
@@ -59,32 +60,78 @@ function LSTMSim:__init(config)
     self.llstm.layer:maskZero()
     self.llstm:add(self.llstm.layer)
     self.llstm:add(nn.Select(1,self.seq_length))
+    if not self.finetune then
+        --print ("enc")
+        self.enc = self.llstm
+    end
 
     self.rlstm = nn.Sequential()
     self.rlstm.layer = {}
     self.rlstm.layer = nn.SeqLSTM(self.mem_dim, self.mem_dim)
     self.rlstm.layer:maskZero()
     self.rlstm:add(self.llstm.layer)
-    self.rlstm:add(nn.Select(1,self.seq_length))
+    print (self.finetune)
+    if self.finetune then
+        self.rlstm:add(nn.Select(1,self.seq_length))
+        if self.gpuidx > 0 then self.criterion = nn.BCECriterion():cl() else self.criterion = nn.BCECriterion() end
+    else
+        self.rlstm:add(nn.SplitTable(1))
+        local unigram = torch.ones(self.vocab_size)
+        local ncemodule = nn.NCEModule(self.mem_dim, self.vocab_size, 10,unigram,1)
+
+            -- NCE requires {input, target} as inputs
+        self.dec = nn.Sequential()
+        :add(nn.ParallelTable()
+        :add(self.rlstm):add(nn.Identity()))
+        :add(nn.ZipTable()) -- {{x1,x2,...}, {t1,t2,...}} -> {{x1,t1},{x2,t2},...}
+
+            -- encapsulate stepmodule into a Sequencer
+        self.dec:add(nn.Sequencer(nn.MaskZero(ncemodule, 1)))
+
+            -- remember previous state between batches
+        self.dec:remember()
+
+
+
+        local crit = nn.MaskZeroCriterion(nn.NCECriterion(), 0)
+
+            -- target is also seqlen x batchsize.
+        self.targetmodule = nn.SplitTable(1)
+
+        self.criterion = nn.SequencerCriterion(crit)
+    end
     -- similarity model
     self.sim_module = self:new_sim_module()
     local modules = nn.Parallel()
-    :add(self.llstm)
-    :add(self.rlstm)
-    :add(self.sim_module)
+    if self.finetune then
+        modules:add(self.llstm)
+        modules:add(self.rlstm)
+        modules:add(self.sim_module)
+    else
+        modules:add(self.enc)
+        modules:add(self.dec)
+    end
     self.params, self.grad_params = modules:getParameters()
+
+    self.lstm_params = self.llstm:getParameters()
 
     -- share must only be called after getParameters, since this changes the
     -- location of the parameters
     -- share_params(self.rlstm, self.llstm)
 end
 
-function LSTMSim:forwardConnect(llstm, rlstm)
+function LSTMSim:forwardConnect(llstm, rlstm,finetune)
+    if not finetune then
+        rlstm.layer.userPrevOutput = llstm.layer.output[self.seq_length]
+    end
     rlstm.layer.userPrevCell = llstm.layer.cell[self.seq_length]
 end
 
 --[[ Backward coupling: Copy decoder gradients to encoder LSTM ]]--
-function LSTMSim:backwardConnect(llstm, rlstm)
+function LSTMSim:backwardConnect(llstm, rlstm,finetune)
+    if not finetune then
+        llstm.layer.gradPrevOutput = rlstm.layer.userGradPrevOutput
+    end
     llstm.layer.userNextGradCell = rlstm.layer.userGradPrevCell
 end
 
@@ -100,7 +147,7 @@ function LSTMSim:new_sim_module()
     local sim_module = nn.Sequential()
     :add(vecs_to_input)
     :add(nn.Linear(2 * self.mem_dim, self.sim_nhidden))
-    --:add(nn.Sigmoid())    -- does better than tanh
+    :add(nn.Sigmoid())    -- does better than tanh
     :add(nn.Linear(self.sim_nhidden, 1))
     :add(nn.Sigmoid())
     if self.gpuidx > 0 then
@@ -110,7 +157,86 @@ function LSTMSim:new_sim_module()
     end
 end
 
-function LSTMSim:train(dataset)
+function LSTMSim:pre_train(dataset)
+    self.enc:training()
+    self.dec:training()
+    local zeros = torch.zeros(self.mem_dim)
+    local max_batchs = dataset.max_batchs
+    local indices = torch.randperm(max_batchs)
+    local total_loss = 0
+    for i = 1, max_batchs do
+
+        xlua.progress((i-1)*self.batch_size, dataset.size)
+
+        local feval = function(x)
+            self.grad_params:zero()
+            local idx = indices[i]
+            local targets = dataset.labels[idx]
+            --print (targets)
+            local lsent_ids, rsent_ids = dataset.lsents[idx], dataset.rsents[idx]
+            --print (lsent_ids)
+            --local a = nn.LookupTable(71293,200)
+            --self.emb:clearState()
+            --local b = a:forward(lsent_ids)
+            --local b = a:forward(lsent_ids)
+            local linputs = self.lemb:forward(lsent_ids)
+
+            local rinputs = self.remb:forward(rsent_ids)
+
+            --print (rinputs:size())
+            --print (self.emb.weight:size())
+            --print (linputs:size())
+            --print (rinputs:size())
+            --print (lsent_ids[1][3])
+            --print (rsent_ids[1][3])
+            --print (linputs)
+            --print (rinputs[1][3][10])
+
+
+            local loutput = self.enc:forward(linputs)
+            self:forwardConnect(self.llstm,self.rlstm,self.finetune)
+            targets = self.targetmodule:forward(targets)
+
+            local routput = self.dec:forward({rinputs,targets})
+            local loss = self.criterion:forward(routput, targets)
+
+            assert(loss == loss,'loss is NaN.  This usually indicates a bug.  Please check the issues page for existing issues, or create a new issue, if none exist.  Ideally, please state: your operating system, 32-bit/64-bit, your blas version, cpu/cl/cl?' )
+            if loss0 == nil then loss0 = loss end
+            --assert(loss < loss0 * 3,'loss is exploding, aborting.')
+            --print (targets)
+            local rgrad = self.criterion:backward(routput, targets)
+
+            self.enc:backward(linputs,zeros)
+            self:backwardConnect(self.llstm, self.rlstm,self.finetune)
+            self.dec:backward({rinputs,targets},rgrad)
+            --local zeros = torch.zeros(self.seq_length)
+            --self.lemb:forward(lsent_ids,zeros)
+            --self.remb:forward(lsent_ids,zeros)
+            self.lemb:clearState()
+            self.remb:clearState()
+
+
+            --self.grad_params:div(self.batch_size)
+
+            -- regularization
+            loss = loss + 0.5 * self.reg * self.params:norm() ^ 2
+            self.grad_params:add(self.reg, self.params)
+            total_loss = total_loss + loss
+            return loss, self.grad_params
+        end
+
+        optim.adagrad(feval, self.params, self.optim_state)
+        if i%10 == 0 then
+            collectgarbage()
+        end
+    end
+
+    xlua.progress(dataset.size, dataset.size)
+    return total_loss
+end
+
+
+function LSTMSim:fine_tune(dataset)
     self.llstm:training()
     self.rlstm:training()
 
@@ -179,7 +305,11 @@ function LSTMSim:train(dataset)
             self.llstm:backward(linputs,lgrad)
             self:backwardConnect(self.llstm, self.rlstm)
             self.rlstm:backward(rinputs,rgrad)
-
+            --local zeros = torch.zeros(self.seq_length)
+            --self.lemb:forward(lsent_ids,zeros)
+            --self.remb:forward(lsent_ids,zeros)
+            self.lemb:clearState()
+            self.remb:clearState()
 
 
             --self.grad_params:div(self.batch_size)
@@ -294,7 +424,7 @@ function LSTMSim:save(path)
     }
 
     torch.save(path, {
-        params = self.params,
+        params = self.lstm_params,
         config = config,
     })
 end
