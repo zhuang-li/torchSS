@@ -90,7 +90,7 @@ end
 
 --[[ data set ]]--
 
---local trainset, validset, testset = dl.loadGBW({opt.batchsize,opt.batchsize,opt.batchsize}, opt.tiny and 'train_tiny.th7' or nil)
+--local trainset, validset, testset = dl.loadGBW({opt.batchsize,opt.batchsize,opt.batchsize}, 'train_tiny.th7')
 local trainset, validset, testset = dl.loadPTB({opt.batchsize,opt.batchsize,opt.batchsize}, opt.tiny and 'train_tiny.th7' or nil)
 if not opt.silent then
     print("Vocabulary size : "..#trainset.ivocab)
@@ -131,8 +131,9 @@ if not lm then
     --print (trainset.ivocab)
     --local unigram = trainset.wordfreq:float()
     local unigram = torch.ones(#trainset.ivocab)
+    print (#trainset.ivocab)
     local ncemodule = nn.NCEModule(inputsize, #trainset.ivocab, opt.k,unigram,opt.z)
-    ncemodule.batchnoise = not opt.rownoise
+    ncemodule.batchnoise = true
 
     -- NCE requires {input, target} as inputs
     lm = nn.Sequential()
@@ -226,10 +227,10 @@ while opt.maxepoch <= 0 or epoch <= opt.maxepoch do
     for i, inputs, targets in trainset:subiter(opt.seqlen, opt.trainsize) do
         targets = targetmodule:forward(targets)
         inputs = {inputs, targets }
-        print (inputs)
-        print (targets[1])
+        print (inputs[1])
+        print (targets)
         -- forward
-        local outputs = lm:forward(inputs)
+        local outputs = lm:forward(inputs[1]:t())
         local err = criterion:forward(outputs, targets)
         sumErr = sumErr + err
         -- backward

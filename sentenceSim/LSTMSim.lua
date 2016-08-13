@@ -15,7 +15,9 @@ function LSTMSim:__init(config)
     self.batch_size    = config.batch_size    or 100
     self.reg           = config.reg           or 1e-4
     self.seq_length    = config.seq_length    or 20
-    self.finetune      = config.finetune      or true
+    --print (config.finetune)
+    self.finetune      = config.finetune      or false
+    --print (self.finetune)
     self.gpuidx = config.gpuidx or 0
     if self.gpuidx > 0 then
         local ok, cunn = pcall(require, 'clnn')
@@ -69,16 +71,17 @@ function LSTMSim:__init(config)
     self.rlstm.layer = {}
     self.rlstm.layer = nn.SeqLSTM(self.mem_dim, self.mem_dim)
     self.rlstm.layer:maskZero()
-    self.rlstm:add(self.llstm.layer)
-    print (self.finetune)
+    self.rlstm:add(self.rlstm.layer)
+    --print (self.finetune)
     if self.finetune then
         self.rlstm:add(nn.Select(1,self.seq_length))
         if self.gpuidx > 0 then self.criterion = nn.BCECriterion():cl() else self.criterion = nn.BCECriterion() end
     else
         self.rlstm:add(nn.SplitTable(1))
-        local unigram = torch.ones(self.vocab_size)
-        local ncemodule = nn.NCEModule(self.mem_dim, self.vocab_size, 10,unigram,1)
+        local unigram = torch.LongTensor(self.vocab_size):fill(1)
 
+        local ncemodule = nn.NCEModule(self.mem_dim, self.vocab_size, 100,unigram)
+        --ncemodule.batchnoise = false
             -- NCE requires {input, target} as inputs
         self.dec = nn.Sequential()
         :add(nn.ParallelTable()
@@ -173,6 +176,7 @@ function LSTMSim:pre_train(dataset)
             local idx = indices[i]
             local targets = dataset.labels[idx]
             --print (targets)
+
             local lsent_ids, rsent_ids = dataset.lsents[idx], dataset.rsents[idx]
             --print (lsent_ids)
             --local a = nn.LookupTable(71293,200)
@@ -196,8 +200,9 @@ function LSTMSim:pre_train(dataset)
             local loutput = self.enc:forward(linputs)
             self:forwardConnect(self.llstm,self.rlstm,self.finetune)
             targets = self.targetmodule:forward(targets)
-
+            --print (rinputs)
             local routput = self.dec:forward({rinputs,targets})
+            --print (routput)
             local loss = self.criterion:forward(routput, targets)
 
             assert(loss == loss,'loss is NaN.  This usually indicates a bug.  Please check the issues page for existing issues, or create a new issue, if none exist.  Ideally, please state: your operating system, 32-bit/64-bit, your blas version, cpu/cl/cl?' )

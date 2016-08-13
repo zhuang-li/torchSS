@@ -43,9 +43,9 @@ function sentenceSim.load_pretrain_data(data_path,vocab,batch_size,seq_length)
 end
 
 function sentenceSim.read_pretrain_batch(file,vocab,batch_size,seq_length)
-    local label_matrix = torch.Tensor(batch_size,seq_length)
-    local ldata_matrix = torch.Tensor(batch_size,seq_length)
-    local rdata_matrix = torch.Tensor(batch_size,seq_length)
+    local label_matrix = torch.LongTensor(batch_size,seq_length)
+    local ldata_matrix = torch.LongTensor(batch_size,seq_length)
+    local rdata_matrix = torch.LongTensor(batch_size,seq_length)
     local idx = 0
     local abadon_data = 0
     local sent1_length = 0
@@ -72,7 +72,7 @@ function sentenceSim.read_pretrain_batch(file,vocab,batch_size,seq_length)
     if idx ~= batch_size then
         return nil
     else
-        return {label_matrix,ldata_matrix:t(),rdata_matrix:t(),abadon_data,sent1_length,sent2_length}
+        return {label_matrix:t(),ldata_matrix:t(),rdata_matrix:t(),abadon_data,sent1_length,sent2_length}
     end
 end
 
@@ -83,7 +83,7 @@ function sentenceSim.process_pretrain_label(sent2_tensor,vocab)
 
     local length = sent2_tensor:size(1)
     --print (length)
-    local label_tensor = torch.Tensor(length):fill(vocab.pad_index)
+    local label_tensor = torch.LongTensor(length)
 
     for i = 1, length do
         if i == length or sent2_tensor[i+1] == vocab.pad_index then
