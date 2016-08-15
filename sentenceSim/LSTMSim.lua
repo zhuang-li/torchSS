@@ -78,9 +78,9 @@ function LSTMSim:__init(config)
         if self.gpuidx > 0 then self.criterion = nn.BCECriterion():cl() else self.criterion = nn.BCECriterion() end
     else
         self.rlstm:add(nn.SplitTable(1))
-        local unigram = torch.LongTensor(self.vocab_size):fill(1)
+        local unigram = torch.ones(self.vocab_size)
 
-        local ncemodule = nn.NCEModule(self.mem_dim, self.vocab_size, 100,unigram)
+        local ncemodule = nn.NCEModule(self.mem_dim, self.vocab_size, 25,unigram)
         --ncemodule.batchnoise = false
             -- NCE requires {input, target} as inputs
         self.dec = nn.Sequential()
@@ -163,8 +163,9 @@ end
 function LSTMSim:pre_train(dataset)
     self.enc:training()
     self.dec:training()
-    local zeros = torch.zeros(self.mem_dim)
+
     local max_batchs = dataset.max_batchs
+    local zeros = torch.zeros(self.batch_size,self.mem_dim)
     local indices = torch.randperm(max_batchs)
     local total_loss = 0
     for i = 1, max_batchs do
@@ -198,6 +199,7 @@ function LSTMSim:pre_train(dataset)
 
 
             local loutput = self.enc:forward(linputs)
+            --print (loutput)
             self:forwardConnect(self.llstm,self.rlstm,self.finetune)
             targets = self.targetmodule:forward(targets)
             --print (rinputs)
@@ -210,10 +212,10 @@ function LSTMSim:pre_train(dataset)
             --assert(loss < loss0 * 3,'loss is exploding, aborting.')
             --print (targets)
             local rgrad = self.criterion:backward(routput, targets)
-
-            self.enc:backward(linputs,zeros)
-            self:backwardConnect(self.llstm, self.rlstm,self.finetune)
             self.dec:backward({rinputs,targets},rgrad)
+
+            self:backwardConnect(self.llstm, self.rlstm,self.finetune)
+            self.enc:backward(linputs,zeros)
             --local zeros = torch.zeros(self.seq_length)
             --self.lemb:forward(lsent_ids,zeros)
             --self.remb:forward(lsent_ids,zeros)
@@ -267,17 +269,8 @@ function LSTMSim:fine_tune(dataset)
 
             local rinputs = self.remb:forward(rsent_ids)
 
-            --print (rinputs:size())
-            --print (self.emb.weight:size())
-            --print (linputs:size())
-            --print (rinputs:size())
-            --print (lsent_ids[1][3])
-            --print (rsent_ids[1][3])
-            --print (linputs)
-            --print (rinputs[1][3][10])
-
             local linput = self.llstm:forward(linputs)
-            self:forwardConnect(self.llstm,self.rlstm)
+            self:forwardConnect(self.llstm,self.rlstm,self.finetune )
             local rinput = self.rlstm:forward(rinputs)
             local inputs = {linput,rinput}
                 -- compute relatedness
@@ -308,7 +301,7 @@ function LSTMSim:fine_tune(dataset)
                 rgrad = rep_grad[2]
             end
             self.llstm:backward(linputs,lgrad)
-            self:backwardConnect(self.llstm, self.rlstm)
+            self:backwardConnect(self.llstm, self.rlstm,self.finetune)
             self.rlstm:backward(rinputs,rgrad)
             --local zeros = torch.zeros(self.seq_length)
             --self.lemb:forward(lsent_ids,zeros)
@@ -429,7 +422,7 @@ function LSTMSim:save(path)
     }
 
     torch.save(path, {
-        params = self.lstm_params,
+        lstm_params = self.lstm_params,
         config = config,
     })
 end
@@ -437,7 +430,7 @@ end
 function LSTMSim.load(path)
     local state = torch.load(path)
     local model = treelstm.LSTMSim.new(state.config)
-    model.params:copy(state.params)
+    model.lstm_params:copy(state.lstm_params)
     return model
 end
 

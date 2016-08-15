@@ -1,10 +1,3 @@
---
--- Created by IntelliJ IDEA.
--- User: zhuangli
--- Date: 11/08/2016
--- Time: 2:10 AM
--- To change this template use File | Settings | File Templates.
---
 require 'paths'
 require 'rnn'
 require 'nngraph'
@@ -40,7 +33,7 @@ cmd:option('--k', 100, 'how many noise samples to use for NCE')
 cmd:option('--continue', '', 'path to model for which training should be continued. Note that current options (except for device, cuda and tiny) will be ignored.')
 cmd:option('--Z', 1, 'normalization constant for NCE module (-1 approximates it from first batch).')
 cmd:option('--rownoise', false, 'sample k noise samples for each row for NCE module')
--- rnn layer
+-- rnn layer 
 cmd:option('--seqlen', 50, 'sequence length : back-propagate through time (BPTT) for this many time-steps')
 cmd:option('--inputsize', -1, 'size of lookup table embeddings. -1 defaults to hiddensize[1]')
 cmd:option('--hiddensize', '{256,256}', 'number of hidden units used at output of each recurrent layer. When more than one is specified, RNN/LSTMs/GRUs are stacked')
@@ -90,8 +83,7 @@ end
 
 --[[ data set ]]--
 
---local trainset, validset, testset = dl.loadGBW({opt.batchsize,opt.batchsize,opt.batchsize}, 'train_tiny.th7')
-local trainset, validset, testset = dl.loadPTB({opt.batchsize,opt.batchsize,opt.batchsize}, opt.tiny and 'train_tiny.th7' or nil)
+local trainset, validset, testset = dl.loadGBW({opt.batchsize,opt.batchsize,opt.batchsize}, opt.tiny and 'train_tiny.th7' or nil)
 if not opt.silent then
     print("Vocabulary size : "..#trainset.ivocab)
     print("Train set split into "..opt.batchsize.." sequences of length "..trainset:size())
@@ -127,13 +119,10 @@ if not lm then
     lm:add(nn.SplitTable(1))
 
     -- output layer
-    --print (trainset.wordfreq)
-    --print (trainset.ivocab)
     --local unigram = trainset.wordfreq:float()
     local unigram = torch.ones(#trainset.ivocab)
-    print (#trainset.ivocab)
-    local ncemodule = nn.NCEModule(inputsize, #trainset.ivocab, opt.k,unigram,opt.z)
-    ncemodule.batchnoise = true
+    local ncemodule = nn.NCEModule(inputsize, #trainset.ivocab, 25, unigram, opt.Z)
+    ncemodule.batchnoise = not opt.rownoise
 
     -- NCE requires {input, target} as inputs
     lm = nn.Sequential()
@@ -226,11 +215,9 @@ while opt.maxepoch <= 0 or epoch <= opt.maxepoch do
     local sumErr = 0
     for i, inputs, targets in trainset:subiter(opt.seqlen, opt.trainsize) do
         targets = targetmodule:forward(targets)
-        inputs = {inputs, targets }
-        print (inputs[1])
-        print (targets)
+        inputs = {inputs, targets}
         -- forward
-        local outputs = lm:forward(inputs[1]:t())
+        local outputs = lm:forward(inputs)
         local err = criterion:forward(outputs, targets)
         sumErr = sumErr + err
         -- backward
@@ -324,4 +311,3 @@ while opt.maxepoch <= 0 or epoch <= opt.maxepoch do
     collectgarbage()
     epoch = epoch + 1
 end
-

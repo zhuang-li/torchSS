@@ -44,8 +44,8 @@ cmd:text()
 -- parse input params
 opt = cmd:parse(arg)
 
-local embedding_path = opt.data_dir..'/embedding/glove.840B.300d.th'
-local vocab_path = opt.data_dir..'/embedding/glove.840B.vocab'
+local embedding_path = opt.data_dir..'/embedding/vectors.th'
+local vocab_path = opt.data_dir..'/embedding/vectors_vocab.txt'
 local train_path = opt.data_dir..'/train/pit_train.txt'
 local model_path = opt.data_dir..'/model_ser'..opt.model_path
 local batch_size = opt.batch_size
@@ -84,6 +84,7 @@ printf('max epochs = %d\n', epochs)
 printf('training data size = %d\n', train_data.size)
 printf('dumped training data size = %d\n', train_data.dump_data_size)
 printf('average training data length = %d\n', train_avg_length)
+printf('pre-train model path %s\n',model_path)
 vocab = nil
 emb_vecs = nil
 collectgarbage()
@@ -120,7 +121,7 @@ for i = 1, epochs do
     local total_loss = model:pre_train(train_data)
     print('Train loss: '..total_loss)
     printf('-- finished epoch in %.2fs\n', sys.clock() - start)
-    if i >= 5 then
+    if i == opt.max_epochs then
         print('Saving pre-train model')
         model:save(model_path)
     end

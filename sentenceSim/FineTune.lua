@@ -23,7 +23,7 @@ cmd:text('Options')
 cmd:option('-data_dir','data','data directory. Should contain the training data and embedding')
 cmd:option('-hidden_size', 200, 'size of LSTM internal state')
 cmd:option('-model', 'lstm', 'lstm,gru or rnn')
-cmd:option('-learning_rate',0.05,'learning rate')
+cmd:option('-learning_rate',0.5,'learning rate')
 cmd:option('-reg',0.0001,'regularization rate')
 cmd:option('-max_epochs',15,'max training epoch')
 cmd:option('-seq_length',10,'number of timesteps to unroll for')
@@ -84,9 +84,7 @@ vocab = nil
 emb_vecs = nil
 collectgarbage()
 --load model
-if opt.load ~= 'f' then
-    local model_path = opt.data_dir..'/model_ser'..opt.load
-end
+
 
 
 -- initialize model
@@ -101,7 +99,12 @@ local model = sentenceSim.LSTMSim{
     learning_rate = opt.learning_rate,
     finetune = true
 }
-
+if opt.load ~= 'f' then
+    print ("Loading model")
+    local model_path = opt.data_dir..'/model_ser'..opt.load
+    local model_object = torch.load(model_path)
+    model.lstm_params:copy(model_object.lstm_params)
+end
 
 -- print information
 header('model configuration')
