@@ -20,7 +20,7 @@ function Vocab:__init(path)
     self.size = 0
     self._index = {}
     self._tokens = {}
-
+    self._frequent = {}
     local file = io.open(path)
     while true do
         local line = file:read()
@@ -31,9 +31,11 @@ function Vocab:__init(path)
         if #token_line ~= 1 then
             self._tokens[self.size] = token_line[1]
             self._index[token_line[1]] = self.size
+            self._frequent[token_line[1]] = 0
         else
             self._tokens[self.size] = line
             self._index[line] = self.size
+            self._frequent[line] = 0
         end
     end
     file:close()
@@ -88,6 +90,7 @@ function Vocab:add(w)
     self.size = self.size + 1
     self._tokens[self.size] = w
     self._index[w] = self.size
+    self._frequent[w] = 0
     return self.size
 end
 
@@ -102,12 +105,37 @@ function Vocab:index(w)
     return index
 end
 
+function Vocab:frequent(w)
+    local freq = self._frequent[w]
+    --print (freq)
+    if freq == nil then
+        --    if self.unk_index == nil then
+        --      error('Token not in vocabulary and no UNK token defined: ' .. w)
+        --    end
+        return 0
+    end
+    return freq
+end
+
+function Vocab:addFrequent(w)
+    local freq = self._frequent[w]
+    --print (freq)
+    if freq ~= nil then
+        --print ('baba')
+        self._frequent[w] = freq + 1
+        --print (self._frequent[w])
+    end
+    --print (self._frequent)
+end
+
 function Vocab:token(i)
     if i < 1 or i > self.size then
         error('Index ' .. i .. ' out of bounds')
     end
     return self._tokens[i]
 end
+
+
 
 function Vocab:map(tokens)
     local len = #tokens

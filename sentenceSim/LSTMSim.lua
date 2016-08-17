@@ -66,10 +66,10 @@ function LSTMSim:__init(config)
         --print ("enc")
         self.enc = self.llstm
     end
-
+    self.lstm_params = self.llstm:getParameters()
     self.rlstm = nn.Sequential()
     self.rlstm.layer = {}
-    self.rlstm.layer = nn.SeqLSTM(self.mem_dim, self.mem_dim)
+    self.rlstm.layer = self.llstm.layer
     self.rlstm.layer:maskZero()
     self.rlstm:add(self.rlstm.layer)
     --print (self.finetune)
@@ -78,7 +78,7 @@ function LSTMSim:__init(config)
         if self.gpuidx > 0 then self.criterion = nn.BCECriterion():cl() else self.criterion = nn.BCECriterion() end
     else
         self.rlstm:add(nn.SplitTable(1))
-        local unigram = torch.ones(self.vocab_size)
+        local unigram = config.unigram
 
         local ncemodule = nn.NCEModule(self.mem_dim, self.vocab_size, 25,unigram)
         --ncemodule.batchnoise = false
@@ -108,33 +108,30 @@ function LSTMSim:__init(config)
     local modules = nn.Parallel()
     if self.finetune then
         modules:add(self.llstm)
-        modules:add(self.rlstm)
+        --modules:add(self.rlstm)
         modules:add(self.sim_module)
+        --modules:add(self.criterion)
     else
         modules:add(self.enc)
         modules:add(self.dec)
     end
     self.params, self.grad_params = modules:getParameters()
+    --self.params:uniform(-0.1, 0.1)
 
-    self.lstm_params = self.llstm:getParameters()
 
     -- share must only be called after getParameters, since this changes the
     -- location of the parameters
     -- share_params(self.rlstm, self.llstm)
 end
 
-function LSTMSim:forwardConnect(llstm, rlstm,finetune)
-    if not finetune then
-        rlstm.layer.userPrevOutput = llstm.layer.output[self.seq_length]
-    end
+function LSTMSim:forwardConnect(llstm, rlstm)
+    rlstm.layer.userPrevOutput = llstm.layer.output[self.seq_length]
     rlstm.layer.userPrevCell = llstm.layer.cell[self.seq_length]
 end
 
 --[[ Backward coupling: Copy decoder gradients to encoder LSTM ]]--
-function LSTMSim:backwardConnect(llstm, rlstm,finetune)
-    if not finetune then
-        llstm.layer.gradPrevOutput = rlstm.layer.userGradPrevOutput
-    end
+function LSTMSim:backwardConnect(llstm, rlstm)
+    llstm.layer.gradPrevOutput = rlstm.layer.userGradPrevOutput
     llstm.layer.userNextGradCell = rlstm.layer.userGradPrevCell
 end
 
@@ -149,7 +146,7 @@ function LSTMSim:new_sim_module()
     -- define similarity model architecture
     local sim_module = nn.Sequential()
     :add(vecs_to_input)
-    :add(nn.Linear(2 * self.mem_dim, self.sim_nhidden))
+    :add(nn.Linear(2* self.mem_dim, self.sim_nhidden))
     :add(nn.Sigmoid())    -- does better than tanh
     :add(nn.Linear(self.sim_nhidden, 1))
     :add(nn.Sigmoid())
@@ -200,7 +197,7 @@ function LSTMSim:pre_train(dataset)
 
             local loutput = self.enc:forward(linputs)
             --print (loutput)
-            self:forwardConnect(self.llstm,self.rlstm,self.finetune)
+            self:forwardConnect(self.llstm,self.rlstm)
             targets = self.targetmodule:forward(targets)
             --print (rinputs)
             local routput = self.dec:forward({rinputs,targets})
@@ -214,7 +211,7 @@ function LSTMSim:pre_train(dataset)
             local rgrad = self.criterion:backward(routput, targets)
             self.dec:backward({rinputs,targets},rgrad)
 
-            self:backwardConnect(self.llstm, self.rlstm,self.finetune)
+            self:backwardConnect(self.llstm, self.rlstm)
             self.enc:backward(linputs,zeros)
             --local zeros = torch.zeros(self.seq_length)
             --self.lemb:forward(lsent_ids,zeros)
@@ -266,11 +263,12 @@ function LSTMSim:fine_tune(dataset)
             --local b = a:forward(lsent_ids)
             --local b = a:forward(lsent_ids)
             local linputs = self.lemb:forward(lsent_ids)
-
+            --print (lsent_ids)
             local rinputs = self.remb:forward(rsent_ids)
-
+            --print(rinputs)
             local linput = self.llstm:forward(linputs)
-            self:forwardConnect(self.llstm,self.rlstm,self.finetune )
+            --self.llstm.layer:forget()
+            self:forwardConnect(self.llstm,self.rlstm)
             local rinput = self.rlstm:forward(rinputs)
             local inputs = {linput,rinput}
                 -- compute relatedness
@@ -278,9 +276,11 @@ function LSTMSim:fine_tune(dataset)
             --inputs[2] = torch.zeros(inputs[1]:size()):fill(1000)
             --print (inputs[1])
             local output = self.sim_module:forward(inputs)
-            --print (output)
+            --print (targets)
                 -- compute loss and backpropagate
             local loss = self.criterion:forward(output, targets)
+            --print (loss_tensor)
+            --loss = loss_tensor:sum()
             assert(loss == loss,'loss is NaN.  This usually indicates a bug.  Please check the issues page for existing issues, or create a new issue, if none exist.  Ideally, please state: your operating system, 32-bit/64-bit, your blas version, cpu/cl/cl?' )
             if loss0 == nil then loss0 = loss end
             --assert(loss < loss0 * 3,'loss is exploding, aborting.')
@@ -289,20 +289,18 @@ function LSTMSim:fine_tune(dataset)
             --print (sim_grad)
             local rep_grad = self.sim_module:backward(inputs, sim_grad)
             local lgrad,rgrad
-            if self.gpuidx > 0 then
-                --lgrad = torch.zeros(self.seq_length,self.batch_size,self.mem_dim):cl()
-                lgrad = rep_grad[1]
-                --rgrad = torch.zeros(self.seq_length,self.batch_size,self.mem_dim):cl()
-                rgrad = rep_grad[2]
-            else
                 --lgrad = torch.zeros(self.seq_length,self.batch_size,self.mem_dim)
-                lgrad = rep_grad[1]
+            lgrad = rep_grad[1]
                 --rgrad = torch.zeros(self.seq_length,self.batch_size,self.mem_dim)
-                rgrad = rep_grad[2]
-            end
-            self.llstm:backward(linputs,lgrad)
-            self:backwardConnect(self.llstm, self.rlstm,self.finetune)
+            rgrad = rep_grad[2]
+
+            --self.llstm:backward(linputs,lgrad)
+
+            --self:backwardConnect(self.llstm, self.rlstm,self.finetune)
             self.rlstm:backward(rinputs,rgrad)
+            self:backwardConnect(self.llstm, self.rlstm)
+            --self.llstm.layer:forget()
+            self.llstm:backward(linputs,lgrad)
             --local zeros = torch.zeros(self.seq_length)
             --self.lemb:forward(lsent_ids,zeros)
             --self.remb:forward(lsent_ids,zeros)
@@ -360,6 +358,7 @@ function LSTMSim:predict(lsent_ids, rsent_ids)
     --print (inputs[1])
     local output = self.sim_module:forward(inputs)
     --print (output[2][1])
+    --print (output)
     local size = output:size(1)
     local prediction = torch.Tensor(size)
     --print (output)

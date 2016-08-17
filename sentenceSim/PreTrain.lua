@@ -16,13 +16,6 @@
 --
 
 require('..')
-function accuracy(pred,gold,size)
-    local count = 0
-    for i = 1,#pred do
-        count = count + torch.eq(pred[i], gold[i]):sum()
-    end
-    return count / size
-end
 
 cmd = torch.CmdLine()
 cmd:text()
@@ -44,8 +37,8 @@ cmd:text()
 -- parse input params
 opt = cmd:parse(arg)
 
-local embedding_path = opt.data_dir..'/embedding/vectors.th'
-local vocab_path = opt.data_dir..'/embedding/vectors_vocab.txt'
+local embedding_path = opt.data_dir..'/embedding/glove.6B.200d.th'
+local vocab_path = opt.data_dir..'/embedding/glove.6B.vocab'
 local train_path = opt.data_dir..'/train/pit_train.txt'
 local model_path = opt.data_dir..'/model_ser'..opt.model_path
 local batch_size = opt.batch_size
@@ -73,6 +66,7 @@ for i = 1, vocab.size do
         end
     end
 end
+
 --print (vecs[71293])
 --vecs = torch.zeros(vecs:size())
 ori_vocab = nil
@@ -80,6 +74,9 @@ print('unk count = ' .. num_unk)
 
 local train_data = sentenceSim.load_pretrain_data(train_path,vocab,batch_size,seq_length)
 local train_avg_length = train_data.sum_length/(train_data.size*2)
+
+print (vocab._frequent)
+local unigram = sentenceSim.read_unigram(vocab)
 printf('max epochs = %d\n', epochs)
 printf('training data size = %d\n', train_data.size)
 printf('dumped training data size = %d\n', train_data.dump_data_size)
@@ -90,11 +87,12 @@ emb_vecs = nil
 collectgarbage()
 --load model
 
-
+--print (unigram)
 
 -- initialize model
 --print (finetune)
 local model = sentenceSim.LSTMSim{
+    unigram = unigram,
     emb_vecs   = vecs,
     structure  = opt.model,
     mem_dim    = opt.hidden_size,
