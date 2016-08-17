@@ -56,12 +56,12 @@ function LSTMSim:__init(config)
     -- initialize LSTM model
 
 
-    self.llstm = nn.Sequential()
-    self.llstm.layer = {}
-    self.llstm.layer = nn.SeqLSTM(self.mem_dim, self.mem_dim)
-    self.llstm.layer:maskZero()
-    self.llstm:add(self.llstm.layer)
-    self.llstm:add(nn.Select(1,self.seq_length))
+    local llstm = nn.Sequential()
+    llstm.layer = {}
+    llstm.layer = nn.SeqLSTM(self.mem_dim, self.mem_dim)
+    llstm.layer:maskZero()
+    llstm:add(self.llstm.layer)
+    llstm:add(nn.Select(1,self.seq_length))
     if not self.finetune then
         --print ("enc")
         self.enc = self.llstm
@@ -104,7 +104,15 @@ function LSTMSim:__init(config)
         self.criterion = nn.SequencerCriterion(crit)
     end
     -- similarity model
-    self.sim_module = self:new_sim_module()
+    local sim_module = self:new_sim_module()
+    local siamese_encoder = nn.ParallelTable()
+    :add(llstm)
+    :add(llstm:clone('weight', 'bias', 'gradWeight', 'gradBias'))
+
+    self.model = nn.Sequential()
+    :add(siamese_encoder)
+    :add(sim_module)
+    [[--
     local modules = nn.Parallel()
     if self.finetune then
         modules:add(self.llstm)
@@ -115,7 +123,8 @@ function LSTMSim:__init(config)
         modules:add(self.enc)
         modules:add(self.dec)
     end
-    self.params, self.grad_params = modules:getParameters()
+    ]]--
+    self.params, self.grad_params = self.model:getParameters()
     --self.params:uniform(-0.1, 0.1)
 
 
@@ -241,9 +250,9 @@ end
 
 
 function LSTMSim:fine_tune(dataset)
-    self.llstm:training()
-    self.rlstm:training()
-
+    --self.llstm:training()
+    --self.rlstm:training()
+    self.model:training()
     local max_batchs = dataset.max_batchs
     local indices = torch.randperm(max_batchs)
     local total_loss = 0
@@ -266,16 +275,17 @@ function LSTMSim:fine_tune(dataset)
             --print (lsent_ids)
             local rinputs = self.remb:forward(rsent_ids)
             --print(rinputs)
-            local linput = self.llstm:forward(linputs)
+            local output = self.model:forward(linputs,rinputs)
+            --local linput = self.llstm:forward(linputs)
             --self.llstm.layer:forget()
-            self:forwardConnect(self.llstm,self.rlstm)
-            local rinput = self.rlstm:forward(rinputs)
-            local inputs = {linput,rinput}
+            --self:forwardConnect(self.llstm,self.rlstm)
+            --local rinput = self.rlstm:forward(rinputs)
+            --local inputs = {linput,rinput}
                 -- compute relatedness
             --inputs[1] = torch.Tensor(inputs[1]:size()):fill(100)
             --inputs[2] = torch.zeros(inputs[1]:size()):fill(1000)
             --print (inputs[1])
-            local output = self.sim_module:forward(inputs)
+            --local output = self.sim_module:forward(inputs)
             --print (targets)
                 -- compute loss and backpropagate
             local loss = self.criterion:forward(output, targets)
@@ -287,20 +297,20 @@ function LSTMSim:fine_tune(dataset)
             --print (targets)
             local sim_grad = self.criterion:backward(output, targets)
             --print (sim_grad)
-            local rep_grad = self.sim_module:backward(inputs, sim_grad)
-            local lgrad,rgrad
+            --local rep_grad = self.sim_module:backward(inputs, sim_grad)
+            --local lgrad,rgrad
                 --lgrad = torch.zeros(self.seq_length,self.batch_size,self.mem_dim)
-            lgrad = rep_grad[1]
+            --lgrad = rep_grad[1]
                 --rgrad = torch.zeros(self.seq_length,self.batch_size,self.mem_dim)
-            rgrad = rep_grad[2]
-
+            --rgrad = rep_grad[2]
+            self.model:backward({linputs,rinputs},sim_grad)
             --self.llstm:backward(linputs,lgrad)
 
             --self:backwardConnect(self.llstm, self.rlstm,self.finetune)
-            self.rlstm:backward(rinputs,rgrad)
-            self:backwardConnect(self.llstm, self.rlstm)
+            --self.rlstm:backward(rinputs,rgrad)
+            --self:backwardConnect(self.llstm, self.rlstm)
             --self.llstm.layer:forget()
-            self.llstm:backward(linputs,lgrad)
+            --self.llstm:backward(linputs,lgrad)
             --local zeros = torch.zeros(self.seq_length)
             --self.lemb:forward(lsent_ids,zeros)
             --self.remb:forward(lsent_ids,zeros)
@@ -331,9 +341,9 @@ end
 
 -- Predict the similarity of a sentence pair.
 function LSTMSim:predict(lsent_ids, rsent_ids)
-    self.llstm:evaluate()
-    self.rlstm:evaluate()
-    self.sim_module:evaluate()
+    self.model:evaluate()
+    --self.rlstm:evaluate()
+    --self.sim_module:evaluate()
     self.grad_params:zero()
     local linputs = self.lemb:forward(lsent_ids)
 
@@ -348,15 +358,7 @@ function LSTMSim:predict(lsent_ids, rsent_ids)
     --print (linputs)
     --print (rinputs[1][3][10])
 
-    local linput = self.llstm:forward(linputs)
-    self:forwardConnect(self.llstm,self.rlstm)
-    local rinput = self.rlstm:forward(rinputs)
-    local inputs = {linput,rinput}
-    -- compute relatedness
-    --inputs[1] = torch.Tensor(inputs[1]:size()):fill(100)
-    --inputs[2] = torch.zeros(inputs[1]:size()):fill(1000)
-    --print (inputs[1])
-    local output = self.sim_module:forward(inputs)
+    local output = self.model:forward(linputs,rinputs)
     --print (output[2][1])
     --print (output)
     local size = output:size(1)
