@@ -25,7 +25,7 @@ function Vocab:__init(path)
     local count = 1
     while true do
         local line = path[count]
-        print (line)
+        --print (line)
         if line == nil then break end
         self.size = self.size + 1
 
