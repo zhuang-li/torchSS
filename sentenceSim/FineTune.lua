@@ -69,8 +69,8 @@ cmd:text()
 -- parse input params
 opt = cmd:parse(arg)
 
-local embedding_path = opt.data_dir..'/embedding/glove.840B.300d.th'
-local vocab_path = opt.data_dir..'/embedding/glove.840B.vocab'
+local embedding_path = opt.data_dir..'/embedding/glove.twitter.27B.200d.th'
+local vocab_path = opt.data_dir..'/embedding/glove.twitter.27B.vocab'
 local train_path = opt.data_dir..'/train/pit_train.txt'
 local dev_path = opt.data_dir..'/dev/pit_dev.txt'
 local test_path = opt.data_dir..'/test/pit_test.txt'
