@@ -106,7 +106,7 @@ for i = 1, vocab.size do
 end
 --print (vecs[71293])
 --vecs = torch.zeros(vecs:size())
-ori_vocab = nil
+
 print('unk count = ' .. num_unk)
 
 local train_data = sentenceSim.load_data(train_path,vocab,batch_size,seq_length)
@@ -128,6 +128,9 @@ printf('average test data length = %d\n', test_avg_length)
 printf('train set unknown words = %d\n', train_data.unk_words)
 printf('dev set unknown words = %d\n', dev_data.unk_words)
 printf('test set unknown words = %d\n', test_data.unk_words)
+word2vec.w2vvocab = nil
+vocab_t7 = nil
+ori_vocab = nil
 vocab = nil
 emb_vecs = nil
 collectgarbage()
