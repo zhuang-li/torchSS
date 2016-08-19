@@ -37,7 +37,7 @@ function Vocab:__init(path)
 
         count = count + 1
     end
-    file:close()
+    --file:close()
 
     local unks = {'<UNK>', '<unk>', 'UUUNKKK'}
     for _, tok in pairs(unks) do
