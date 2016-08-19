@@ -25,11 +25,12 @@ function Vocab:__init(path)
     local count = 1
     while true do
         local line = path[count]
+        print (line)
         if line == nil then break end
         self.size = self.size + 1
 
-        local token_line = stringx.split(line, ' ')
-        print (token_line)
+        --local token_line = stringx.split(line, ' ')
+        --print (token_line)
         self._tokens[self.size] = line
         self._index[line] = self.size
         self._frequent[line] = 0
