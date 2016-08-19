@@ -29,15 +29,11 @@ function Vocab:__init(path)
         self.size = self.size + 1
 
         local token_line = stringx.split(line, ' ')
-        if #token_line ~= 1 then
-            self._tokens[self.size] = token_line[1]
-            self._index[token_line[1]] = self.size
-            self._frequent[token_line[1]] = 0
-        else
-            self._tokens[self.size] = line
-            self._index[line] = self.size
-            self._frequent[line] = 0
-        end
+        print (token_line)
+        self._tokens[self.size] = line
+        self._index[line] = self.size
+        self._frequent[line] = 0
+
         count = count + 1
     end
     file:close()
