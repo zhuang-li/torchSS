@@ -68,9 +68,9 @@ cmd:text()
 
 -- parse input params
 opt = cmd:parse(arg)
-
-local embedding_path = opt.data_dir..'/embedding/glove.twitter.27B.200d.th'
-local vocab_path = opt.data_dir..'/embedding/glove.twitter.27B.vocab'
+local embedding_path = opt.data_dir..'/embedding/word2vec.t7'
+--local embedding_path = opt.data_dir..'/embedding/glove.twitter.27B.200d.th'
+--local vocab_path = opt.data_dir..'/embedding/glove.twitter.27B.vocab'
 local train_path = opt.data_dir..'/train/pit_train.txt'
 local dev_path = opt.data_dir..'/dev/pit_dev.txt'
 local test_path = opt.data_dir..'/test/pit_test.txt'
@@ -79,9 +79,13 @@ local batch_size = opt.batch_size
 local seq_length = opt.seq_length
 local epochs = opt.max_epochs
 
-local vocab,emb_vecs = sentenceSim.read_embedding(vocab_path, embedding_path)
+local word2vec = torch.load(embedding_path)
+local emb_vecs = word2vec.M
+local vocab_t7 = word2vec.v2wvocab
+--local vocab,emb_vecs = sentenceSim.read_embedding(vocab_path, embedding_path)
 local emb_dim = emb_vecs:size(2)
-local ori_vocab = sentenceSim.Vocab(vocab_path)
+local vocab = sentenceSim.Vocab(vocab_t7)
+local ori_vocab = sentenceSim.Vocab(vocab_t7)
 
 vocab:add_unk_token()
 vocab:add_pad_token()

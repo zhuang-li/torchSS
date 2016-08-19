@@ -21,9 +21,10 @@ function Vocab:__init(path)
     self._index = {}
     self._tokens = {}
     self._frequent = {}
-    local file = io.open(path)
+    --local file = io.open(path)
+    local count = 1
     while true do
-        local line = file:read()
+        local line = path[count]
         if line == nil then break end
         self.size = self.size + 1
 
@@ -37,6 +38,7 @@ function Vocab:__init(path)
             self._index[line] = self.size
             self._frequent[line] = 0
         end
+        count = count + 1
     end
     file:close()
 
