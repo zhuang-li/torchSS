@@ -28,8 +28,8 @@ function LSTMSim:__init(config)
     self.lemb = nn.LookupTable(self.vocab_size, self.emb_dim)
 
     self.lemb.weight:copy(config.emb_vecs)
-    self.remb = nn.LookupTable(self.vocab_size, self.emb_dim)
-    self.remb.weight:copy(config.emb_vecs)
+    --self.remb = nn.LookupTable(self.vocab_size, self.emb_dim)
+    --self.remb.weight:copy(config.emb_vecs)
     -- number of similarity rating classes
 
     -- optimizer configuration
@@ -201,7 +201,7 @@ function LSTMSim:pre_train(dataset)
             --self.lemb:forward(lsent_ids,zeros)
             --self.remb:forward(lsent_ids,zeros)
             self.lemb:clearState()
-            self.remb:clearState()
+            --self.remb:clearState()
 
 
             --self.grad_params:div(self.batch_size)
@@ -246,9 +246,10 @@ function LSTMSim:fine_tune(dataset)
             --self.emb:clearState()
             --local b = a:forward(lsent_ids)
             --local b = a:forward(lsent_ids)
-            local linputs = self.lemb:forward(lsent_ids)
-            --print (lsent_ids)
-            local rinputs = self.remb:forward(rsent_ids)
+            local linputs_init = self.lemb:forward(lsent_ids)
+            local linputs = linputs_init:clone()
+            local rinputs_init = self.lemb:forward(rsent_ids)
+            local rinputs = rinputs_init:clone()
             --print(rinputs)
             local output = self.model:forward({linputs,rinputs})
             --local linput = self.llstm:forward(linputs)
@@ -290,7 +291,7 @@ function LSTMSim:fine_tune(dataset)
             --self.lemb:forward(lsent_ids,zeros)
             --self.remb:forward(lsent_ids,zeros)
             self.lemb:clearState()
-            self.remb:clearState()
+            --self.remb:clearState()
 
 
             --self.grad_params:div(self.batch_size)
@@ -320,10 +321,10 @@ function LSTMSim:predict(lsent_ids, rsent_ids)
     --self.rlstm:evaluate()
     --self.sim_module:evaluate()
     self.grad_params:zero()
-    local linputs = self.lemb:forward(lsent_ids)
-
-    local rinputs = self.remb:forward(rsent_ids)
-
+    local linputs_init = self.lemb:forward(lsent_ids)
+    local linputs = linputs_init:clone()
+    local rinputs_init = self.lemb:forward(rsent_ids)
+    local rinputs = rinputs_init:clone()
     --print (rinputs:size())
     --print (self.emb.weight:size())
     --print (linputs:size())
@@ -344,7 +345,7 @@ function LSTMSim:predict(lsent_ids, rsent_ids)
         if output[i][1] > 0.5 then prediction[i] = 1 else prediction[i] = 0 end
     end
     self.lemb:clearState()
-    self.remb:clearState()
+    --self.remb:clearState()
     --self.llstm:forget()
     --self.rlstm:forget()
     return prediction
