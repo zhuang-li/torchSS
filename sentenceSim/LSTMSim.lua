@@ -18,18 +18,6 @@ function LSTMSim:__init(config)
     --print (config.finetune)
     self.finetune      = config.finetune      or false
     --print (self.finetune)
-    self.gpuidx = config.gpuidx or 0
-    if self.gpuidx > 0 then
-        local ok, cunn = pcall(require, 'clnn')
-        local ok2, cutorch = pcall(require, 'cltorch')
-        if not ok then print('package clnn not found!') end
-        if not ok2 then print('package cltorch not found!') end
-        if ok and ok2 then
-            print('using OpenCL on GPU 1 ...')
-            cltorch.setDevice(self.gpuidx) -- note +1 to make it 0 indexed! sigh lua
-            torch.manualSeed(self.gpuidx)
-        end
-    end
     self.structure     = config.structure     or 'lstm' -- {lstm, bilstm}
     self.sim_nhidden   = config.sim_nhidden   or 50
 
@@ -42,9 +30,6 @@ function LSTMSim:__init(config)
     self.lemb.weight:copy(config.emb_vecs)
     self.remb = nn.LookupTable(self.vocab_size, self.emb_dim)
     self.remb.weight:copy(config.emb_vecs)
-    if self.gpuidx > 0 then
-        self.emb = self.emb:cl()
-    end
     -- number of similarity rating classes
 
     -- optimizer configuration
@@ -58,26 +43,27 @@ function LSTMSim:__init(config)
 
     local llstm = nn.Sequential()
     llstm.layer = {}
-    llstm.layer = nn.SeqLSTM(self.mem_dim, self.mem_dim)
+    llstm.layer = nn.SeqLSTM(self.emb_dim, self.mem_dim)
     llstm.layer:maskZero()
-    llstm:add(self.llstm.layer)
+    llstm:add(llstm.layer)
+    --llstm:add(nn.Dropout())
     llstm:add(nn.Select(1,self.seq_length))
     if not self.finetune then
         --print ("enc")
-        self.enc = self.llstm
+        self.enc = llstm
     end
-    self.lstm_params = self.llstm:getParameters()
-    self.rlstm = nn.Sequential()
-    self.rlstm.layer = {}
-    self.rlstm.layer = self.llstm.layer
-    self.rlstm.layer:maskZero()
-    self.rlstm:add(self.rlstm.layer)
+    self.lstm_params = llstm:getParameters()
+    local rlstm = nn.Sequential()
+    rlstm.layer = {}
+    rlstm.layer = llstm.layer:clone('weight', 'bias', 'gradWeight', 'gradBias')
+    rlstm.layer:maskZero()
+    rlstm:add(rlstm.layer)
     --print (self.finetune)
     if self.finetune then
-        self.rlstm:add(nn.Select(1,self.seq_length))
-        if self.gpuidx > 0 then self.criterion = nn.BCECriterion():cl() else self.criterion = nn.BCECriterion() end
+        rlstm:add(nn.Select(1,self.seq_length))
+        self.criterion = nn.BCECriterion()
     else
-        self.rlstm:add(nn.SplitTable(1))
+        rlstm:add(nn.SplitTable(1))
         local unigram = config.unigram
 
         local ncemodule = nn.NCEModule(self.mem_dim, self.vocab_size, 25,unigram)
@@ -104,33 +90,24 @@ function LSTMSim:__init(config)
         self.criterion = nn.SequencerCriterion(crit)
     end
     -- similarity model
+
     local sim_module = self:new_sim_module()
     local siamese_encoder = nn.ParallelTable()
     :add(llstm)
-    :add(llstm:clone('weight', 'bias', 'gradWeight', 'gradBias'))
+    :add(rlstm)
 
     self.model = nn.Sequential()
     :add(siamese_encoder)
     :add(sim_module)
-    [[--
-    local modules = nn.Parallel()
-    if self.finetune then
-        modules:add(self.llstm)
-        --modules:add(self.rlstm)
-        modules:add(self.sim_module)
-        --modules:add(self.criterion)
-    else
-        modules:add(self.enc)
-        modules:add(self.dec)
-    end
-    ]]--
+
     self.params, self.grad_params = self.model:getParameters()
     --self.params:uniform(-0.1, 0.1)
-
+    self.emb_vecs = nil
+    collectgarbage()
 
     -- share must only be called after getParameters, since this changes the
     -- location of the parameters
-    -- share_params(self.rlstm, self.llstm)
+    share_params(rlstm.layer, llstm.layer)
 end
 
 function LSTMSim:forwardConnect(llstm, rlstm)
@@ -156,14 +133,12 @@ function LSTMSim:new_sim_module()
     local sim_module = nn.Sequential()
     :add(vecs_to_input)
     :add(nn.Linear(2* self.mem_dim, self.sim_nhidden))
+    --:add(nn.Dropout())
     :add(nn.Sigmoid())    -- does better than tanh
     :add(nn.Linear(self.sim_nhidden, 1))
     :add(nn.Sigmoid())
-    if self.gpuidx > 0 then
-        return sim_module:cl()
-    else
-        return sim_module
-    end
+    return sim_module
+
 end
 
 function LSTMSim:pre_train(dataset)
@@ -275,7 +250,7 @@ function LSTMSim:fine_tune(dataset)
             --print (lsent_ids)
             local rinputs = self.remb:forward(rsent_ids)
             --print(rinputs)
-            local output = self.model:forward(linputs,rinputs)
+            local output = self.model:forward({linputs,rinputs})
             --local linput = self.llstm:forward(linputs)
             --self.llstm.layer:forget()
             --self:forwardConnect(self.llstm,self.rlstm)
@@ -358,7 +333,7 @@ function LSTMSim:predict(lsent_ids, rsent_ids)
     --print (linputs)
     --print (rinputs[1][3][10])
 
-    local output = self.model:forward(linputs,rinputs)
+    local output = self.model:forward({linputs,rinputs})
     --print (output[2][1])
     --print (output)
     local size = output:size(1)
@@ -370,8 +345,8 @@ function LSTMSim:predict(lsent_ids, rsent_ids)
     end
     self.lemb:clearState()
     self.remb:clearState()
-    self.llstm:forget()
-    self.rlstm:forget()
+    --self.llstm:forget()
+    --self.rlstm:forget()
     return prediction
 end
 
@@ -402,7 +377,7 @@ function LSTMSim:print_config()
     printf('%-25s = %s\n',   'LSTM structure', self.structure)
     printf('%-25s = %d\n',   'sim module hidden dim', self.sim_nhidden)
     printf('%-25s = %d\n',   'sequence length', self.seq_length)
-    printf('%-25s = %d\n',   'GPU index', self.gpuidx)
+    --printf('%-25s = %d\n',   'GPU index', self.gpuidx)
 end
 
 --

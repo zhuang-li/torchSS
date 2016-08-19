@@ -57,7 +57,7 @@ cmd:text('Options')
 cmd:option('-data_dir','data','data directory. Should contain the training data and embedding')
 cmd:option('-hidden_size', 200, 'size of LSTM internal state')
 cmd:option('-model', 'lstm', 'lstm,gru or rnn')
-cmd:option('-learning_rate',0.1,'learning rate')
+cmd:option('-learning_rate',0.01,'learning rate')
 cmd:option('-reg',0.0001,'regularization rate')
 cmd:option('-max_epochs',15,'max training epoch')
 cmd:option('-seq_length',10,'number of timesteps to unroll for')
@@ -69,7 +69,7 @@ cmd:text()
 -- parse input params
 opt = cmd:parse(arg)
 
-local embedding_path = opt.data_dir..'/embedding/glove.6B.200d.th'
+local embedding_path = opt.data_dir..'/embedding/glove.6B.300d.th'
 local vocab_path = opt.data_dir..'/embedding/glove.6B.vocab'
 local train_path = opt.data_dir..'/train/pit_train.txt'
 local dev_path = opt.data_dir..'/dev/pit_dev.txt'
@@ -133,6 +133,7 @@ collectgarbage()
 
 -- initialize model
 local model = sentenceSim.LSTMSim{
+    in_dim = emb_dim,
     emb_vecs   = vecs,
     structure  = opt.model,
     mem_dim    = opt.hidden_size,
@@ -174,15 +175,18 @@ for i = 1, epochs do
     printf('-- finished epoch in %.2fs\n', sys.clock() - start)
 
 
+    --local dev_predictions = model:predict_dataset(dev_data)
+    --local dev_score = accuracy(dev_predictions, dev_data.labels,dev_data.size)
+    --printf('-- dev score: %.4f\n', dev_score)
+    --if dev_score > last_dev_score then
     local dev_predictions = model:predict_dataset(dev_data)
-    local dev_score = accuracy(dev_predictions, dev_data.labels,dev_data.size)
-    printf('-- dev score: %.4f\n', dev_score)
-    if dev_score > last_dev_score then
-        local test_predictions = model:predict_dataset(test_data)
-        local p,f,r,a = label_score(test_predictions, test_data.labels,test_data.size)
-        printf('-- test score: Precision: %.4f Recall: %.4f F-measure: %.4f Accuracy: %.4f\n', p,f,r,a)
+    local p,f,r,a = label_score(dev_predictions, dev_data.labels,dev_data.size)
+    printf('-- test score: Precision: %.4f Recall: %.4f F-measure: %.4f Accuracy: %.4f\n', p,f,r,a)
 
-    end
+    local test_predictions = model:predict_dataset(test_data)
+    local p,f,r,a = label_score(test_predictions, test_data.labels,test_data.size)
+    printf('-- test score: Precision: %.4f Recall: %.4f F-measure: %.4f Accuracy: %.4f\n', p,f,r,a)
+    --end
     last_dev_score = dev_score
 end
 printf('finished training in %.2fs\n', sys.clock() - train_start)
