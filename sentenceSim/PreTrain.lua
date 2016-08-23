@@ -37,7 +37,7 @@ cmd:text()
 -- parse input params
 opt = cmd:parse(arg)
 
-local embedding_path = opt.data_dir..'/embedding/glove.6B.200d.th'
+local embedding_path = opt.data_dir..'/embedding/glove.6B.300d.th'
 local vocab_path = opt.data_dir..'/embedding/glove.6B.vocab'
 local train_path = opt.data_dir..'/train/pit_train.txt'
 local model_path = opt.data_dir..'/model_ser'..opt.model_path
@@ -51,6 +51,8 @@ local ori_vocab = sentenceSim.Vocab(vocab_path)
 
 vocab:add_unk_token()
 vocab:add_pad_token()
+vocab:add_end_token()
+vocab:add_start_token()
 local num_unk = 0
 local vecs = torch.Tensor(vocab.size, emb_dim)
 for i = 1, vocab.size do
@@ -70,18 +72,21 @@ end
 --print (vecs[71293])
 --vecs = torch.zeros(vecs:size())
 ori_vocab = nil
-print('unk count = ' .. num_unk)
+print('new token count = ' .. num_unk)
 
 local train_data = sentenceSim.load_pretrain_data(train_path,vocab,batch_size,seq_length)
 local train_avg_length = train_data.sum_length/(train_data.size*2)
 
-print (vocab._frequent)
+
 local unigram = sentenceSim.read_unigram(vocab)
+--print ('Sum is '..unigram:sum())
 printf('max epochs = %d\n', epochs)
 printf('training data size = %d\n', train_data.size)
 printf('dumped training data size = %d\n', train_data.dump_data_size)
 printf('average training data length = %d\n', train_avg_length)
 printf('pre-train model path %s\n',model_path)
+printf('unknown words = %d\n', train_data.unk_words)
+printf('frequency count = %d\n', unigram:sum())
 vocab = nil
 emb_vecs = nil
 collectgarbage()

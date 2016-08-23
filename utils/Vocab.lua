@@ -21,59 +21,24 @@ function Vocab:__init(path)
     self._index = {}
     self._tokens = {}
     self._frequent = {}
-    --local file = io.open(path)
-    local count = 1
+    local file = io.open(path)
     while true do
-        local line = path[count]
-        --print (line)
+        local line = file:read()
         if line == nil then break end
         self.size = self.size + 1
 
-        --local token_line = stringx.split(line, ' ')
-        --print (token_line)
-        self._tokens[self.size] = line
-        self._index[line] = self.size
-        self._frequent[line] = 0
-
-        count = count + 1
-    end
-    --file:close()
-
-    local unks = {'<UNK>', '<unk>', 'UUUNKKK'}
-    for _, tok in pairs(unks) do
-        self.unk_index = self.unk_index or self._index[tok]
-        if self.unk_index ~= nil then
-            self.unk_token = tok
-            break
+        local token_line = stringx.split(line, ' ')
+        if #token_line ~= 1 then
+            self._tokens[self.size] = token_line[1]
+            self._index[token_line[1]] = self.size
+            self._frequent[token_line[1]] = 0
+        else
+            self._tokens[self.size] = line
+            self._index[line] = self.size
+            self._frequent[line] = 0
         end
     end
-
-    local starts = {'<s>', '<S>'}
-    for _, tok in pairs(starts) do
-        self.start_index = self.start_index or self._index[tok]
-        if self.start_index ~= nil then
-            self.start_token = tok
-            break
-        end
-    end
-
-    local ends = {'</s>', '</S>'}
-    for _, tok in pairs(ends) do
-        self.end_index = self.end_index or self._index[tok]
-        if self.end_index ~= nil then
-            self.end_token = tok
-            break
-        end
-    end
-
-    local pads = {'<PAD>','#PAD#'}
-    for _, tok in pairs(pads) do
-        self.pad_index = self.pad_index or self._index[tok]
-        if self.pad_index ~= nil then
-            self.pad_token = tok
-            break
-        end
-    end
+    file:close()
 
 end
 
@@ -96,9 +61,6 @@ end
 function Vocab:index(w)
     local index = self._index[w]
     if index == nil then
-        --    if self.unk_index == nil then
-        --      error('Token not in vocabulary and no UNK token defined: ' .. w)
-        --    end
         return self.unk_index
     end
     return index
@@ -108,9 +70,6 @@ function Vocab:frequent(w)
     local freq = self._frequent[w]
     --print (freq)
     if freq == nil then
-        --    if self.unk_index == nil then
-        --      error('Token not in vocabulary and no UNK token defined: ' .. w)
-        --    end
         return 0
     end
     return freq
@@ -118,13 +77,9 @@ end
 
 function Vocab:addFrequent(w)
     local freq = self._frequent[w]
-    --print (freq)
     if freq ~= nil then
-        --print ('baba')
         self._frequent[w] = freq + 1
-        --print (self._frequent[w])
     end
-    --print (self._frequent)
 end
 
 function Vocab:token(i)

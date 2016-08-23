@@ -68,9 +68,9 @@ cmd:text()
 
 -- parse input params
 opt = cmd:parse(arg)
-local embedding_path = opt.data_dir..'/embedding/word2vec.t7'
---local embedding_path = opt.data_dir..'/embedding/glove.twitter.27B.200d.th'
---local vocab_path = opt.data_dir..'/embedding/glove.twitter.27B.vocab'
+
+local embedding_path = opt.data_dir..'/embedding/glove.6B.300d.th'
+local vocab_path = opt.data_dir..'/embedding/glove.6B.vocab'
 local train_path = opt.data_dir..'/train/pit_train.txt'
 local dev_path = opt.data_dir..'/dev/pit_dev.txt'
 local test_path = opt.data_dir..'/test/pit_test.txt'
@@ -79,16 +79,13 @@ local batch_size = opt.batch_size
 local seq_length = opt.seq_length
 local epochs = opt.max_epochs
 
-local word2vec = torch.load(embedding_path)
-local emb_vecs = word2vec.M
-local vocab_t7 = word2vec.v2wvocab
---local vocab,emb_vecs = sentenceSim.read_embedding(vocab_path, embedding_path)
+local vocab,emb_vecs = sentenceSim.read_embedding(vocab_path, embedding_path)
 local emb_dim = emb_vecs:size(2)
-local vocab = sentenceSim.Vocab(vocab_t7)
-local ori_vocab = sentenceSim.Vocab(vocab_t7)
+local ori_vocab = sentenceSim.Vocab(vocab_path)
 
 vocab:add_unk_token()
 vocab:add_pad_token()
+vocab:add_end_token()
 local num_unk = 0
 local vecs = torch.Tensor(vocab.size, emb_dim)
 for i = 1, vocab.size do
@@ -106,8 +103,8 @@ for i = 1, vocab.size do
 end
 --print (vecs[71293])
 --vecs = torch.zeros(vecs:size())
-
-print('unk count = ' .. num_unk)
+ori_vocab = nil
+print('new token count = ' .. num_unk)
 
 local train_data = sentenceSim.load_data(train_path,vocab,batch_size,seq_length)
 local dev_data = sentenceSim.load_data(dev_path,vocab,batch_size,seq_length)
@@ -128,9 +125,6 @@ printf('average test data length = %d\n', test_avg_length)
 printf('train set unknown words = %d\n', train_data.unk_words)
 printf('dev set unknown words = %d\n', dev_data.unk_words)
 printf('test set unknown words = %d\n', test_data.unk_words)
-word2vec.w2vvocab = nil
-vocab_t7 = nil
-ori_vocab = nil
 vocab = nil
 emb_vecs = nil
 collectgarbage()
@@ -154,8 +148,8 @@ local model = sentenceSim.LSTMSim{
 if opt.load ~= 'f' then
     print ("Loading model")
     local model_path = opt.data_dir..'/model_ser'..opt.load
-    local model_object = torch.load(model_path)
-    model.lstm_params:copy(model_object.lstm_params)
+    local llstm_param = torch.load(model_path)
+    model.lstm_params:copy(llstm_param)
 end
 
 -- print information
