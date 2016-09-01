@@ -97,11 +97,9 @@ function LSTMSim:__init(config)
 
         self.params, self.grad_params = self.model:getParameters()
 
-        -- share must only be called after getParameters, since this changes the
-        -- location of the parameters
-        if self.finetune then
-            share_params(self.rlstm, self.llstm)
-        end
+
+        share_params(self.rlstm, self.llstm)
+
     else
         self.model = nn.ParallelTable()
         :add(self.enc)

@@ -86,6 +86,8 @@ end
 local trainset, validset, testset = dl.loadGBW({opt.batchsize,opt.batchsize,opt.batchsize}, opt.tiny and 'train_tiny.th7' or nil)
 if not opt.silent then
     print("Vocabulary size : "..#trainset.ivocab)
+    print (trainset.ivocab[1])
+    print (trainset.vocab['Third-seeded'])
     print("Train set split into "..opt.batchsize.." sequences of length "..trainset:size())
 end
 
@@ -214,6 +216,7 @@ while opt.maxepoch <= 0 or epoch <= opt.maxepoch do
     lm:training()
     local sumErr = 0
     for i, inputs, targets in trainset:subiter(opt.seqlen, opt.trainsize) do
+        print (targets)
         targets = targetmodule:forward(targets)
         inputs = {inputs, targets}
         -- forward
@@ -274,6 +277,7 @@ while opt.maxepoch <= 0 or epoch <= opt.maxepoch do
     lm:evaluate()
     local sumErr = 0
     for i, inputs, targets in validset:subiter(opt.seqlen, opt.validsize) do
+        print (targets)
         targets = targetmodule:forward(targets)
         local outputs = lm:forward{inputs, targets}
         local err = criterion:forward(outputs, targets)
