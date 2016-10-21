@@ -1,3 +1,7 @@
+
+-- Element-Research examples
+
+
 require 'paths'
 require 'rnn'
 require 'nngraph'

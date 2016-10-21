@@ -1,18 +1,9 @@
 --
--- Created by IntelliJ IDEA.
+--
 -- User: zhuangli
 -- Date: 12/08/2016
 -- Time: 11:17 PM
--- To change this template use File | Settings | File Templates.
---
-
-
---
--- Created by IntelliJ IDEA.
--- User: zhuangli
--- Date: 4/08/2016
--- Time: 3:39 AM
--- To change this template use File | Settings | File Templates.
+-- Pre-train module
 --
 
 require('..')
@@ -37,7 +28,7 @@ cmd:text()
 -- parse input params
 opt = cmd:parse(arg)
 
-local embedding_path = opt.data_dir..'/embedding/glove.6B.300d.th'
+local embedding_path = opt.data_dir..'/embedding/glove.6B.200d.th'
 local vocab_path = opt.data_dir..'/embedding/glove.6B.vocab'
 local train_path = opt.data_dir..'/train/pit_train.txt'
 local model_path = opt.data_dir..'/model_ser'..opt.model_path
@@ -45,9 +36,13 @@ local batch_size = opt.batch_size
 local seq_length = opt.seq_length
 local epochs = opt.max_epochs
 
+-- read embedding
+
 local vocab,emb_vecs = sentenceSim.read_embedding(vocab_path, embedding_path)
 local emb_dim = emb_vecs:size(2)
 local ori_vocab = sentenceSim.Vocab(vocab_path)
+
+-- add unknown token, padding token, EOS token to embedding
 
 vocab:add_unk_token()
 vocab:add_pad_token()
@@ -69,17 +64,17 @@ for i = 1, vocab.size do
     end
 end
 
---print (vecs[71293])
---vecs = torch.zeros(vecs:size())
 ori_vocab = nil
 print('new token count = ' .. num_unk)
 
+-- load pre-training data
+
 local train_data = sentenceSim.load_pretrain_data(train_path,vocab,batch_size,seq_length)
 local train_avg_length = train_data.sum_length/(train_data.size*2)
-
-
 local unigram = sentenceSim.read_unigram(vocab)
---print ('Sum is '..unigram:sum())
+
+-- statistic of the pre-training data
+
 printf('max epochs = %d\n', epochs)
 printf('training data size = %d\n', train_data.size)
 printf('dumped training data size = %d\n', train_data.dump_data_size)
@@ -90,12 +85,8 @@ printf('frequency count = %d\n', unigram:sum())
 vocab = nil
 emb_vecs = nil
 collectgarbage()
---load model
-
---print (unigram)
 
 -- initialize model
---print (finetune)
 local model = sentenceSim.LSTMSim{
     unigram = unigram,
     emb_vecs   = vecs,

@@ -1,9 +1,5 @@
 --
--- Created by IntelliJ IDEA.
--- User: zhuangli
--- Date: 11/08/2016
--- Time: 5:13 AM
--- To change this template use File | Settings | File Templates.
+-- Element-Research examples
 --
 require 'rnn'
 

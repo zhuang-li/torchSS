@@ -3,17 +3,20 @@
 -- User: zhuangli
 -- Date: 3/08/2016
 -- Time: 11:49 PM
--- To change this template use File | Settings | File Templates.
+-- Pre-processing code, pre-process the data to adapt our model's needs
 --
 
 
+-- read word embedding and vocabulary
 
 function sentenceSim.read_embedding(vocab_path, emb_path)
-    local vocab = sentenceSim.Vocab(vocab_path)
+    local vocab = sentenceSim.vocab(vocab_path)
     local embedding = torch.load(emb_path):double()
     return vocab, embedding
 end
 
+
+-- load pre-training data
 
 function sentenceSim.load_pretrain_data(data_path,vocab,batch_size,seq_length)
     local data_set = {}
@@ -35,15 +38,14 @@ function sentenceSim.load_pretrain_data(data_path,vocab,batch_size,seq_length)
         data_set.max_batchs = data_set.max_batchs + 1
         data_set.size = data_set.size + batch_size
         data_set.dump_data_size = data_set.dump_data_size + output[4]
-        --print (output[5])
         data_set.unk_words = data_set.unk_words + output[7]
         data_set.sum_length = data_set.sum_length + output[5] + output[6]
-        --print (data_set.sum_length)
     end
-    --print (vocab._frequent['sparebanken'])
     file:close()
     return data_set
 end
+
+-- load a batch of pre-training data
 
 function sentenceSim.read_pretrain_batch(file,vocab,batch_size,seq_length)
     local label_matrix = torch.LongTensor(batch_size,seq_length)
@@ -81,6 +83,8 @@ function sentenceSim.read_pretrain_batch(file,vocab,batch_size,seq_length)
     end
 end
 
+-- process labels for pre-training data
+
 function sentenceSim.process_pretrain_label(sent2_tensor,vocab)
     if sent2_tensor == nil then
         return nil
@@ -88,7 +92,6 @@ function sentenceSim.process_pretrain_label(sent2_tensor,vocab)
     local length = sent2_tensor:size(1)
 
     local label_tensor = torch.zeros(length)
-    --print (label_tensor)
     for i = 1, length do
         if i == length or sent2_tensor[i+1] == vocab.pad_index then
             label_tensor[i] = vocab:index('</s>')
@@ -99,6 +102,8 @@ function sentenceSim.process_pretrain_label(sent2_tensor,vocab)
     end
     return label_tensor
 end
+
+-- load finetuning data
 
 function sentenceSim.load_data(data_path,vocab,batch_size,seq_length,label_path)
     local data_set = {}
@@ -124,10 +129,8 @@ function sentenceSim.load_data(data_path,vocab,batch_size,seq_length,label_path)
         data_set.max_batchs = data_set.max_batchs + 1
         data_set.size = data_set.size + output[1]:size(1)
         data_set.dump_data_size = data_set.dump_data_size + output[4]
-        --print (output[5])
         data_set.sum_length = data_set.sum_length + output[5] + output[6]
         data_set.unk_words = data_set.unk_words + output[7]
-        --print (data_set.sum_length)
     end
     file:close()
     if label_path ~= nil then
@@ -135,6 +138,8 @@ function sentenceSim.load_data(data_path,vocab,batch_size,seq_length,label_path)
     end
     return data_set
 end
+
+-- read a batch of finetuning data
 
 function sentenceSim.read_batch(file,vocab,batch_size,seq_length,label_file)
     local label_tensor = torch.Tensor(batch_size)
@@ -180,6 +185,8 @@ function sentenceSim.read_batch(file,vocab,batch_size,seq_length,label_file)
     end
 end
 
+-- process labels of test data in finetuning
+
 function sentenceSim.process_test_label(line)
     local items = stringx.split(line, '\t')
     if items[1] == 'false' then
@@ -190,6 +197,8 @@ function sentenceSim.process_test_label(line)
         return 1
     end
 end
+
+-- process labels of development data in finetuning
 
 function sentenceSim.process_label(label_tuple)
     local c = label_tuple:sub(2,2)
@@ -203,17 +212,17 @@ function sentenceSim.process_label(label_tuple)
     end
 end
 
+-- read frequency of words
+
 function sentenceSim.read_unigram(vocab)
     local tensor = torch.zeros(vocab.size)
-    --print (vocab._frequent)
     for i = 1,vocab.size do
-        --print (vocab:token(i))
-        --print (vocab:frequent(vocab:token(i)))
         tensor[i] = vocab:frequent(vocab:token(i))
-        --print (vocab:frequent(vocab:token(i)))
     end
     return tensor
 end
+
+-- read tensors for sentences
 
 function sentenceSim.read_tokens_tensor_and_padding(sent,vocab,seq_length,reverse,dec)
     local tokens_ori = stringx.split(sent, ' ')

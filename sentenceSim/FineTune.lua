@@ -1,17 +1,14 @@
 --
--- Created by IntelliJ IDEA.
 -- User: zhuangli
 -- Date: 4/08/2016
 -- Time: 3:39 AM
--- To change this template use File | Settings | File Templates.
---
+-- Fine tune module
 
 require('..')
 function accuracy(pred,gold,size)
     local count = 0
     for i = 1,#pred do
         count = count + torch.eq(pred[i], gold[i]):sum()
-        --print (count)
     end
     return count / size
 end
@@ -37,11 +34,7 @@ function label_score(pred,gold,size)
                 end
             end
         end
-        --print (count)
     end
-    print (tp)
-    print (fp)
-    print (fn)
     local p = tp/(tp + fp)
     local r = tp/(tp + fn)
     local f = 2*(p*r)/(p + r)
@@ -68,8 +61,7 @@ cmd:text()
 
 -- parse input params
 opt = cmd:parse(arg)
-
-local embedding_path = opt.data_dir..'/embedding/glove.6B.300d.th'
+local embedding_path = opt.data_dir..'/embedding/glove.6B.200d.th'
 local vocab_path = opt.data_dir..'/embedding/glove.6B.vocab'
 local train_path = opt.data_dir..'/train/pit_train.txt'
 local dev_path = opt.data_dir..'/dev/pit_dev.txt'
@@ -78,10 +70,12 @@ local test_label = opt.data_dir..'/test/pit_test_label.txt'
 local batch_size = opt.batch_size
 local seq_length = opt.seq_length
 local epochs = opt.max_epochs
-
+-- read embedding
 local vocab,emb_vecs = sentenceSim.read_embedding(vocab_path, embedding_path)
 local emb_dim = emb_vecs:size(2)
-local ori_vocab = sentenceSim.Vocab(vocab_path)
+local ori_vocab = sentenceSim.vocab(vocab_path)
+
+-- add unknown token, padding token, EOS token to embedding
 
 vocab:add_unk_token()
 vocab:add_pad_token()
@@ -101,10 +95,9 @@ for i = 1, vocab.size do
         end
     end
 end
---print (vecs[71293])
---vecs = torch.zeros(vecs:size())
 ori_vocab = nil
-print('new token count = ' .. num_unk)
+
+-- load data, we abandon the sentence which is over the length of args.seq_length
 
 local train_data = sentenceSim.load_data(train_path,vocab,batch_size,seq_length)
 local dev_data = sentenceSim.load_data(dev_path,vocab,batch_size,seq_length)
@@ -112,6 +105,9 @@ local test_data = sentenceSim.load_data(test_path,vocab,batch_size,seq_length,te
 local train_avg_length = train_data.sum_length/(train_data.size*2)
 local dev_avg_length = dev_data.sum_length/(dev_data.size*2)
 local test_avg_length = test_data.sum_length/(test_data.size*2)
+
+-- print statistic of data
+
 printf('max epochs = %d\n', epochs)
 printf('training data size = %d\n', train_data.size)
 printf('development data size = %d\n', dev_data.size)
@@ -125,11 +121,10 @@ printf('average test data length = %d\n', test_avg_length)
 printf('train set unknown words = %d\n', train_data.unk_words)
 printf('dev set unknown words = %d\n', dev_data.unk_words)
 printf('test set unknown words = %d\n', test_data.unk_words)
+print('new token count = ' .. num_unk)
 vocab = nil
 emb_vecs = nil
 collectgarbage()
---load model
-
 
 
 -- initialize model
@@ -145,6 +140,7 @@ local model = sentenceSim.LSTMSim{
     learning_rate = opt.learning_rate,
     finetune = true
 }
+--load pre-training model, it is an optional choice
 if opt.load ~= 'f' then
     print ("Loading model")
     local model_path = opt.data_dir..'/model_ser'..opt.load
@@ -174,20 +170,14 @@ for i = 1, epochs do
     local total_loss = model:fine_tune(train_data)
     print('Train loss: '..total_loss)
     printf('-- finished epoch in %.2fs\n', sys.clock() - start)
-
-
-    --local dev_predictions = model:predict_dataset(dev_data)
-    --local dev_score = accuracy(dev_predictions, dev_data.labels,dev_data.size)
-    --printf('-- dev score: %.4f\n', dev_score)
-    --if dev_score > last_dev_score then
     local dev_predictions = model:predict_dataset(dev_data)
-    local p,f,r,a = label_score(dev_predictions, dev_data.labels,dev_data.size)
-    printf('-- test score: Precision: %.4f Recall: %.4f F-measure: %.4f Accuracy: %.4f\n', p,f,r,a)
-
-    local test_predictions = model:predict_dataset(test_data)
-    local p,f,r,a = label_score(test_predictions, test_data.labels,test_data.size)
-    printf('-- test score: Precision: %.4f Recall: %.4f F-measure: %.4f Accuracy: %.4f\n', p,f,r,a)
-    --end
+    local dev_score = accuracy(dev_predictions, dev_data.labels,dev_data.size)
+    printf('-- dev score: %.4f\n', dev_score)
+    if dev_score > last_dev_score then
+        local test_predictions = model:predict_dataset(test_data)
+        local p,f,r,a = label_score(test_predictions, test_data.labels,test_data.size)
+        printf('-- test score: Precision: %.4f Recall: %.4f F-measure: %.4f Accuracy: %.4f\n', p,f,r,a)
+    end
     last_dev_score = dev_score
 end
 printf('finished training in %.2fs\n', sys.clock() - train_start)

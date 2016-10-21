@@ -1,12 +1,10 @@
 --
--- Created by IntelliJ IDEA.
 -- User: zhuangli
 -- Date: 25/07/2016
 -- Time: 4:03 PM
--- To change this template use File | Settings | File Templates.
+-- Gradient test, test whether the LSTM implementation is correct
 --
 require('..')
---require ('nn')
 local ok, cunn = pcall(require, 'clnn')
 local ok2, cutorch = pcall(require, 'cltorch')
 if not ok then print('package clnn not found!') end
@@ -47,25 +45,18 @@ function test_module(model, model_name,word_idx)
     local grad = torch.zeros(step,emb_dim)
     grad[step] = grad_reg
     input_errors = model:backward(seq, grad:cl())
-    --print (input_errors)
     input_errors = input_errors:double()
     print (input_errors)
     elem_idx = 3
-    --print(seq[word_idx][elem_idx])
     origin_value = seq[word_idx][elem_idx]
     delta = 0.001
     seq[word_idx][elem_idx] = origin_value + delta
-    --print(seq[word_idx][elem_idx])
     loss_plus = forward(model,criterion,regression)
-    --print (loss_plus)
     model:forget()
-    --printf ('output forward = %f \n', loss_plus)
 
     seq[word_idx][elem_idx] = origin_value - delta
-    --print(seq[word_idx][elem_idx])
     loss_minus = forward(model,criterion,regression)
 
-    --printf ('output backward = %f \n', loss_minus)
     diff = (loss_plus - loss_minus) / (2 * delta)
     printf("%d : %s finite difference is %f and the partial derivative computed by backProp is %f \n", word_idx, model_name, diff, input_errors[word_idx][1][elem_idx])
     error_range = 0.00001

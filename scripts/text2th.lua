@@ -1,3 +1,7 @@
+--[[
+  -- convert the text word embedding file to torch friendly format
+]]--
+
 require('torch')
 require('xlua')
 

@@ -1,12 +1,6 @@
---
--- Created by IntelliJ IDEA.
--- User: zhuangli
--- Date: 11/08/2016
--- Time: 6:46 PM
--- To change this template use File | Settings | File Templates.
---
 --[[
-Example of "coupled" separate encoder and decoder networks, e.g. for sequence-to-sequence networks.
+    -- Element-Research examples
+    -- Example of "coupled" separate encoder and decoder networks, e.g. for sequence-to-sequence networks.
 ]]--
 
 require 'rnn'

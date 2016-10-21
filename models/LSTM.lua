@@ -1,3 +1,5 @@
+
+--[[
 --
 -- Created by IntelliJ IDEA.
 -- User: zhuangli
@@ -5,9 +7,6 @@
 -- Time: 2:25 PM
 -- To change this template use File | Settings | File Templates.
 --
-
---[[
-
  Long Short-Term Memory.
 
 --]]
@@ -43,7 +42,24 @@ function LSTM:__init(config)
         self.gradInput[1] = self.gradInput[1]:cl()
         self.gradInput[2] = self.gradInput[2]:cl()
         self.gradInput[3] = self.gradInput[3]:cl()
-        --print (self.gradInput[3]:size())
+    end
+end
+
+-- share parameters between different LSTM cells
+
+function LSTM:share_params(cell, src)
+    if torch.type(cell) == 'nn.gModule' then
+        for i = 1, #cell.forwardnodes do
+            local node = cell.forwardnodes[i]
+            if node.data.module then
+                node.data.module:share(src.forwardnodes[i].data.module,
+                    'weight', 'bias', 'gradWeight', 'gradBias')
+            end
+        end
+    elseif torch.isTypeOf(cell, 'nn.Module') then
+        cell:share(src, 'weight', 'bias', 'gradWeight', 'gradBias')
+    else
+        error('parameters cannot be shared for this input')
     end
 end
 
@@ -77,14 +93,13 @@ function LSTM:new_cell()
     end
 
 end
-
+-- clone the cell for times of sequence length
 function LSTM:clone_many_times(seq_length)
     local cells = {}
     for i = 1 , seq_length do
         cells[i] = self:new_cell()
         if self.master_cell then
-            --print ('bbaba')
-            share_params(cells[i], self.master_cell)
+            self:share_params(cells[i], self.master_cell)
         end
     end
     return cells
@@ -92,29 +107,20 @@ end
 
 -- Forward propagate.
 -- inputs: T x in_dim tensor, where T is the number of time steps.
--- reverse: if true, read the input from right to left (useful for bidirectional LSTMs).
 -- Returns the final hidden state of the LSTM.
 function LSTM:forward(inputs)
-    --print (size)
     local output
-    --print (inputs)
     for t = 1, self.seq_length do
         local input = inputs[t]
         local cell = self.cells[t]
         local prev_output
         if t > 1 then
             prev_output = self.cells[t - 1].output
-            --print (prev_output[2])
         else
             prev_output = self.initial_values
         end
-        --print (input)
-        --print (prev_output[1])
-        --print (prev_output[2])
         local outputs = cell:forward({input, prev_output[1], prev_output[2]})
         local c, h = unpack(outputs)
-        --print (c)
-        --print (h)
         output = h
     end
     return output
@@ -123,7 +129,6 @@ end
 -- Backpropagate. forward() must have been called previously on the same input.
 -- inputs: T x in_dim tensor, where T is the number of time steps.
 -- grad_outputs: T x num_layers x mem_dim tensor.
--- reverse: if true, read the input from right to left.
 -- Returns the gradients with respect to the inputs (in the same order as the inputs).
 function LSTM:backward(inputs, grad_outputs)
 
@@ -134,17 +139,12 @@ function LSTM:backward(inputs, grad_outputs)
         local grad_output = grad_outputs[t]
         local cell = self.cells[t]
         local grads = {self.gradInput[2], self.gradInput[3] }
-        --print(grad_output)
         grads[2]:add(grad_output)
-        --print (grads[2])
         local prev_output = (t > 1) and self.cells[t - 1].output or self.initial_values
-        --print (t)
-        --print (prev_output[1])
         self.gradInput = cell:backward({input, prev_output[1], prev_output[2]}, grads)
-        --print (self.gradInput[1])
         input_grads[t] = self.gradInput[1]
     end
-    self:forget() -- important to clear out state
+    self:forget()
     return input_grads
 end
 
@@ -152,6 +152,7 @@ end
 function LSTM:zeroGradParameters()
     self.master_cell:zeroGradParameters()
 end
+
 
 function LSTM:parameters()
     return self.master_cell:parameters()
