@@ -109,3 +109,8 @@ Example with loading pretrained model:
 ```
 th sentenceSim/FineTune.lua -data_dir data -hidden_size 200 -model lstm -learning_rate 0.01 -reg 0.0001 -max_epochs 10 -seq_length 10 -batch_size 50 -load pretrain_model
 ```
+
+### Reference
+
+* [ [1] Sequence to Sequence Learning with Neural Networks](http://papers.nips.cc/paper/5346-sequence-to-sequence-learning-with-neural-networks.pdf)
+* [ [2] Siamese Recurrent Architectures for Learning Sentence Similarity](http://www.mit.edu/~jonasm/info/MuellerThyagarajan_AAAI16.pdf)
