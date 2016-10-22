@@ -7,7 +7,7 @@ This code was developed by me for our paper *Normalization with End-to-End Atten
 ## For the Code Reviewers of MILA
 
 Although it is not an official experiment code, I think it is good as the sample code. It is not long ,easy to read and clean.<br>
-**Note:** The code, which is written by [Element-Research](https://github.com/Element-Research/), in `examples` is only for learning by myself. So if you want to check my code, `sentenceSim` includes the main experiment code, `utils` includes the pre-processing code, `tests` includes gradient check code and `models` includes a LSTM model.
+**Note:** The code in `examples` is written by [Element-Research](https://github.com/Element-Research/), which is only for learning by myself. So if you want to check my code, `sentenceSim` includes the main experiment code, `utils` includes the pre-processing code, `tests` includes gradient check code and `models` includes a LSTM model.
 
 ## Requirements
 
