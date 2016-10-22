@@ -7,7 +7,7 @@ This code was developed by me for our paper *Normalization with End-to-End Atten
 ## For the Code Reviewers of MILA
 
 Although it is not an official experiment code, I think it is good as the sample code. It is not long ,easy to read and clean.<br>
-**Note** The code, which is written by [Element-Research](https://github.com/Element-Research/), in `examples` is only for learning by myself. So if you want to check my code, `sentenceSim` includes the main experiment code, `utils` includes the pre-processing code, `tests` includes gradient check code and `models` includes a LSTM model.
+**Note:** The code, which is written by [Element-Research](https://github.com/Element-Research/), in `examples` is only for learning by myself. So if you want to check my code, `sentenceSim` includes the main experiment code, `utils` includes the pre-processing code, `tests` includes gradient check code and `models` includes a LSTM model.
 
 ## Requirements
 
@@ -38,16 +38,18 @@ Then run the following script:
 ```
 This `upzip` the file `glove.6B.zip` and get text embedding file `glove.6B.200d.txt`. Then convert the `glove.6B.200d.txt` to torch format embedding file `glove.6B.200d.th` and text vocabulary file `glove.6B.vocab`.
 For the data set, we use [PIT corpus](http://www.cis.upenn.edu/ xwe/ semeval2015pit) for pre-training and fine-tuning. It is already pushed on the github.
-**Note** Pre-training is supposed to use a larger corpus. However, here we just present our code so we simplify the setting and use a small corpus instead. If require a standard experiment, please collect a larger dataset and pre-process it to fit the input requirements of this model.
+**Note:** Pre-training is supposed to use a larger corpus. However, here we just want present our code so we simplify the settings and use a small corpus instead. If a standard experiment is required, please collect a larger dataset and pre-process it to fit the input requirements of this model.
 
 ### About the experiment
 
 This experiment involves two phases, unsupervised pre-training and supervised fine-tuning. 
 
-We use seq2seq model[[1]](https://arxiv.org/pdf/1409.3215v3.pdf) to do pre-training. The encoder encodes a sentence without out-of-vocabulary(OOV) tokens and decoder decodes the sentence itself. The architecture is as the following figure:
+We use seq2seq model[[1]](https://arxiv.org/pdf/1409.3215v3.pdf) to do pre-training. The encoder encodes a sentence without out-of-vocabulary(OOV) tokens and decoder decodes the sentence itself. 
+The architecture is as the following figure:
 ![seq2seq](https://github.com/deathlee/torchSS/blob/master/figs/seq2seqLSTM.png)
 
-Then we perserve the model of encoder. During fine-tuning, we use a Siamese LSTM[[2]](http://www.mit.edu/~jonasm/info/MuellerThyagarajan_AAAI16.pdf) to predict semantic similarity between sentences. To learn this model, instead of randomly initializing model parameters , we adopt the parameters of the encoder perserved from pre-training. And we learn the model towards our objective. The architecture is as the following figure:
+Then we perserve the model of the encoder. During fine-tuning, we use a Siamese LSTM[[2]](http://www.mit.edu/~jonasm/info/MuellerThyagarajan_AAAI16.pdf) to predict semantic similarity between sentences. To learn this model, instead of randomly initializing model parameters , we adopt the parameters of the encoder perserved from pre-training. And we learn the model towards our objective. 
+The architecture is as the following figure:
 
 ![siamese](https://github.com/deathlee/torchSS/blob/master/figs/SiameseLSTM.png)
 
