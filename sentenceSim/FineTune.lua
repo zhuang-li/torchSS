@@ -112,16 +112,13 @@ printf('max epochs = %d\n', epochs)
 printf('training data size = %d\n', train_data.size)
 printf('development data size = %d\n', dev_data.size)
 printf('test data size = %d\n', test_data.size)
-printf('dumped training data size = %d\n', train_data.dump_data_size)
-printf('dumped development data size = %d\n', dev_data.dump_data_size)
-printf('dumped test data size = %d\n', test_data.dump_data_size)
-printf('average training data length = %d\n', train_avg_length)
-printf('average development data length = %d\n', dev_avg_length)
-printf('average test data length = %d\n', test_avg_length)
+printf('average training sentence length = %d\n', train_avg_length)
+printf('average development sentence length = %d\n', dev_avg_length)
+printf('average test sentence length = %d\n', test_avg_length)
 printf('train set unknown words = %d\n', train_data.unk_words)
 printf('dev set unknown words = %d\n', dev_data.unk_words)
 printf('test set unknown words = %d\n', test_data.unk_words)
-print('new token count = ' .. num_unk)
+printf('new token count = %d\n', num_unk)
 vocab = nil
 emb_vecs = nil
 collectgarbage()
@@ -142,8 +139,8 @@ local model = sentenceSim.LSTMSim{
 }
 --load pre-training model, it is an optional choice
 if opt.load ~= 'f' then
-    print ("Loading model")
-    local model_path = opt.data_dir..'/model_ser'..opt.load
+    local model_path = opt.data_dir..'/model_ser/'..opt.load
+    print ("Loading model from "..model_path)
     local llstm_param = torch.load(model_path)
     model.lstm_params:copy(llstm_param)
 end

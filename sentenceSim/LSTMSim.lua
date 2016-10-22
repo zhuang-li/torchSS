@@ -57,7 +57,7 @@ function LSTMSim:__init(config)
         self.criterion = nn.BCECriterion()
     else
         self.rlstm:add(nn.SplitTable(1))
-        local unigram = config.unigram
+        local unigram = torch.ones(self.vocab_size)
 
         local ncemodule = nn.NCEModule(self.mem_dim, self.vocab_size, 25,unigram)
         self.dec = nn.Sequential()
@@ -181,6 +181,7 @@ function LSTMSim:pre_train(dataset)
             targets = self.targetmodule:forward(targets)
             local routput = self.dec:forward({rinputs,targets})
             local loss = self.criterion:forward(routput, targets)
+
             assert(loss == loss,'loss is NaN.  This usually indicates a bug.  Please check the issues page for existing issues, or create a new issue, if none exist.  Ideally, please state: your operating system, 32-bit/64-bit, your blas version, cpu/cl/cl?' )
             if loss0 == nil then loss0 = loss end
             local rgrad = self.criterion:backward(routput, targets)

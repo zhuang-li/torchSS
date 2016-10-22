@@ -91,7 +91,7 @@ function sentenceSim.process_pretrain_label(sent2_tensor,vocab)
     end
     local length = sent2_tensor:size(1)
 
-    local label_tensor = torch.zeros(length)
+    local label_tensor = torch.ones(length)
     for i = 1, length do
         if i == length or sent2_tensor[i+1] == vocab.pad_index then
             label_tensor[i] = vocab:index('</s>')

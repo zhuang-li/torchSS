@@ -22,7 +22,7 @@ cmd:option('-max_epochs',10,'max training epoch')
 cmd:option('-seq_length',10,'number of timesteps to unroll for')
 cmd:option('-batch_size',100,'number of sequences to train on in parallel')
 cmd:option('-gpuidx',0,'which gpu to use. 0 = use CPU')
-cmd:option('-model_path','/model_name','pre-train model name')
+cmd:option('-model_name','/model_name','pre-train model name')
 cmd:text()
 
 -- parse input params
@@ -31,7 +31,7 @@ opt = cmd:parse(arg)
 local embedding_path = opt.data_dir..'/embedding/glove.6B.200d.th'
 local vocab_path = opt.data_dir..'/embedding/glove.6B.vocab'
 local train_path = opt.data_dir..'/train/pit_train.txt'
-local model_path = opt.data_dir..'/model_ser'..opt.model_path
+local model_path = opt.data_dir..'/model_ser/'..opt.model_name
 local batch_size = opt.batch_size
 local seq_length = opt.seq_length
 local epochs = opt.max_epochs
@@ -40,7 +40,7 @@ local epochs = opt.max_epochs
 
 local vocab,emb_vecs = sentenceSim.read_embedding(vocab_path, embedding_path)
 local emb_dim = emb_vecs:size(2)
-local ori_vocab = sentenceSim.Vocab(vocab_path)
+local ori_vocab = sentenceSim.vocab(vocab_path)
 
 -- add unknown token, padding token, EOS token to embedding
 
@@ -65,7 +65,6 @@ for i = 1, vocab.size do
 end
 
 ori_vocab = nil
-print('new token count = ' .. num_unk)
 
 -- load pre-training data
 
@@ -77,11 +76,11 @@ local unigram = sentenceSim.read_unigram(vocab)
 
 printf('max epochs = %d\n', epochs)
 printf('training data size = %d\n', train_data.size)
-printf('dumped training data size = %d\n', train_data.dump_data_size)
-printf('average training data length = %d\n', train_avg_length)
+printf('average training sentence length = %d\n', train_avg_length)
 printf('pre-train model path %s\n',model_path)
 printf('unknown words = %d\n', train_data.unk_words)
 printf('frequency count = %d\n', unigram:sum())
+printf('new token count = %d\n', num_unk)
 vocab = nil
 emb_vecs = nil
 collectgarbage()

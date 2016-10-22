@@ -22,8 +22,7 @@ seq = seq:cl()
 
 function forward(model, criterion, regression)
     outputs = model:forward(seq)
-    --print (outputs)
-    output = outputs[step]:double()
+    output = outputs:double()
     top_out = regression:forward(output)
     target = torch.Tensor(1,1)
     target[1] = 0.5
@@ -45,8 +44,7 @@ function test_module(model, model_name,word_idx)
     local grad = torch.zeros(step,emb_dim)
     grad[step] = grad_reg
     input_errors = model:backward(seq, grad:cl())
-    input_errors = input_errors:double()
-    print (input_errors)
+    input_errors = input_errors
     elem_idx = 3
     origin_value = seq[word_idx][elem_idx]
     delta = 0.001
@@ -58,9 +56,9 @@ function test_module(model, model_name,word_idx)
     loss_minus = forward(model,criterion,regression)
 
     diff = (loss_plus - loss_minus) / (2 * delta)
-    printf("%d : %s finite difference is %f and the partial derivative computed by backProp is %f \n", word_idx, model_name, diff, input_errors[word_idx][1][elem_idx])
+    printf("%d : %s finite difference is %f and the partial derivative computed by backProp is %f \n", word_idx, model_name, diff, input_errors[word_idx][elem_idx])
     error_range = 0.00001
-    assert((input_errors[word_idx][1][elem_idx] < diff + error_range) and (input_errors[word_idx][1][elem_idx] > diff - error_range), "test of ".. model_name .." failed")
+    assert((input_errors[word_idx][elem_idx] < diff + error_range) and (input_errors[word_idx][elem_idx] > diff - error_range), "test of ".. model_name .." failed")
     print("Pass the gradient test of " .. model_name .. "!")
 end
 
