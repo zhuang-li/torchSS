@@ -99,9 +99,9 @@ ori_vocab = nil
 
 -- load data, we abandon the sentence which is over the length of args.seq_length
 
-local train_data = sentenceSim.load_data(train_path,vocab,batch_size,seq_length)
-local dev_data = sentenceSim.load_data(dev_path,vocab,batch_size,seq_length)
-local test_data = sentenceSim.load_data(test_path,vocab,batch_size,seq_length,test_label)
+local train_data = sentenceSim.load_finetune_data(train_path,vocab,batch_size,seq_length)
+local dev_data = sentenceSim.load_finetune_data(dev_path,vocab,batch_size,seq_length)
+local test_data = sentenceSim.load_finetune_data(test_path,vocab,batch_size,seq_length,test_label)
 local train_avg_length = train_data.sum_length/(train_data.size*2)
 local dev_avg_length = dev_data.sum_length/(dev_data.size*2)
 local test_avg_length = test_data.sum_length/(test_data.size*2)

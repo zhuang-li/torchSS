@@ -55,10 +55,19 @@ function LSTMSim:__init(config)
     if self.finetune then
         self.rlstm:add(nn.Select(1,self.seq_length))
         self.criterion = nn.BCECriterion()
+        -- fintune model
+        local sim_module = self:new_sim_module()
+        local siamese_encoder = nn.ParallelTable()
+        :add(self.llstm)
+        :add(self.rlstm)
+        self.model = nn.Sequential()
+        :add(siamese_encoder)
+        :add(sim_module)
+        self.params, self.grad_params = self.model:getParameters()
+        self:share_params(self.rlstm, self.llstm)
     else
         self.rlstm:add(nn.SplitTable(1))
         local unigram = torch.ones(self.vocab_size)
-
         local ncemodule = nn.NCEModule(self.mem_dim, self.vocab_size, 25,unigram)
         self.dec = nn.Sequential()
         :add(nn.ParallelTable()
@@ -67,43 +76,18 @@ function LSTMSim:__init(config)
 
         -- encapsulate stepmodule into a Sequencer
         self.dec:add(nn.Sequencer(nn.MaskZero(ncemodule, 1)))
-
         -- remember previous state between batches
         self.dec:remember()
-
-
-
         local crit = nn.MaskZeroCriterion(nn.NCECriterion(), 0)
-
         -- target is also seqlen x batchsize.
         self.targetmodule = nn.SplitTable(1)
-
         self.criterion = nn.SequencerCriterion(crit)
-    end
-
-    if self.finetune then
-        -- fintune model
-        local sim_module = self:new_sim_module()
-        local siamese_encoder = nn.ParallelTable()
-        :add(self.llstm)
-        :add(self.rlstm)
-
-        self.model = nn.Sequential()
-        :add(siamese_encoder)
-        :add(sim_module)
-
-        self.params, self.grad_params = self.model:getParameters()
-
-
-        self:share_params(self.rlstm, self.llstm)
-    else
         -- pre-training model
         self.model = nn.ParallelTable()
         :add(self.enc)
         :add(self.dec)
         self.params, self.grad_params = self.model:getParameters()
     end
-
     self.emb_vecs = nil
     collectgarbage()
 end
@@ -142,11 +126,9 @@ end
 -- define similarity model architecture
 
 function LSTMSim:new_sim_module()
-
     local linput, rinput = nn.Identity()(), nn.Identity()()
     local add_dist = nn.Abs()(nn.CSubTable(){linput, rinput})
     local vecs_to_input = nn.gModule({linput,rinput}, {add_dist})
-
     local sim_module = nn.Sequential()
     :add(vecs_to_input)
     :add(nn.Linear(self.mem_dim, 1))
@@ -181,12 +163,10 @@ function LSTMSim:pre_train(dataset)
             targets = self.targetmodule:forward(targets)
             local routput = self.dec:forward({rinputs,targets})
             local loss = self.criterion:forward(routput, targets)
-
             assert(loss == loss,'loss is NaN.  This usually indicates a bug.  Please check the issues page for existing issues, or create a new issue, if none exist.  Ideally, please state: your operating system, 32-bit/64-bit, your blas version, cpu/cl/cl?' )
             if loss0 == nil then loss0 = loss end
             local rgrad = self.criterion:backward(routput, targets)
             self.dec:backward({rinputs,targets},rgrad)
-
             self:backwardConnect(self.llstm, self.rlstm)
             self.enc:backward(linputs,zeros)
             self.lemb:clearState()
@@ -259,15 +239,10 @@ function LSTMSim:predict(lsent_ids, rsent_ids)
     self.model:evaluate()
     self.grad_params:zero()
     local linputs = self.lemb:forward(lsent_ids)
-
     local rinputs = self.remb:forward(rsent_ids)
-
-
     local output = self.model:forward({linputs,rinputs})
-
     local size = output:size(1)
     local prediction = torch.Tensor(size)
-
     for i = 1, size do
         if output[i][1] > 0.5 then prediction[i] = 1 else prediction[i] = 0 end
     end

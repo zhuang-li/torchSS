@@ -70,7 +70,6 @@ ori_vocab = nil
 
 local train_data = sentenceSim.load_pretrain_data(train_path,vocab,batch_size,seq_length)
 local train_avg_length = train_data.sum_length/(train_data.size*2)
-local unigram = sentenceSim.read_unigram(vocab)
 
 -- statistic of the pre-training data
 
@@ -79,7 +78,6 @@ printf('training data size = %d\n', train_data.size)
 printf('average training sentence length = %d\n', train_avg_length)
 printf('pre-train model path %s\n',model_path)
 printf('unknown words = %d\n', train_data.unk_words)
-printf('frequency count = %d\n', unigram:sum())
 printf('new token count = %d\n', num_unk)
 vocab = nil
 emb_vecs = nil
@@ -87,7 +85,6 @@ collectgarbage()
 
 -- initialize model
 local model = sentenceSim.LSTMSim{
-    unigram = unigram,
     emb_vecs   = vecs,
     structure  = opt.model,
     mem_dim    = opt.hidden_size,

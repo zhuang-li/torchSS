@@ -51,11 +51,7 @@ function sentenceSim.read_pretrain_batch(file,vocab,batch_size,seq_length)
     local label_matrix = torch.LongTensor(batch_size,seq_length)
     local ldata_matrix = torch.LongTensor(batch_size,seq_length)
     local rdata_matrix = torch.LongTensor(batch_size,seq_length)
-    local idx = 0
-    local abadon_data = 0
-    local sent1_length = 0
-    local sent2_length = 0
-    local unk_count = 0
+    local idx,abadon_data,sent1_length,sent2_length,unk_count = 0,0,0,0,0
     while idx < batch_size do
         local line = file:read()
         if line == nil then break end
@@ -90,7 +86,6 @@ function sentenceSim.process_pretrain_label(sent2_tensor,vocab)
         return nil
     end
     local length = sent2_tensor:size(1)
-
     local label_tensor = torch.ones(length)
     for i = 1, length do
         if i == length or sent2_tensor[i+1] == vocab.pad_index then
@@ -105,7 +100,7 @@ end
 
 -- load finetuning data
 
-function sentenceSim.load_data(data_path,vocab,batch_size,seq_length,label_path)
+function sentenceSim.load_finetune_data(data_path,vocab,batch_size,seq_length,label_path)
     local data_set = {}
     data_set.max_batchs = 0
     data_set.size = 0
@@ -121,7 +116,7 @@ function sentenceSim.load_data(data_path,vocab,batch_size,seq_length,label_path)
         label_file = io.open(label_path)
     end
     while true do
-        local output = sentenceSim.read_batch(file,vocab,batch_size,seq_length,label_file)
+        local output = sentenceSim.read_finetune_batch(file,vocab,batch_size,seq_length,label_file)
         if output == nil then break end
         data_set.labels[data_set.max_batchs + 1] = output[1]
         data_set.lsents[data_set.max_batchs + 1] = output[2]
@@ -141,24 +136,21 @@ end
 
 -- read a batch of finetuning data
 
-function sentenceSim.read_batch(file,vocab,batch_size,seq_length,label_file)
+function sentenceSim.read_finetune_batch(file,vocab,batch_size,seq_length,label_file)
     local label_tensor = torch.Tensor(batch_size)
     local ldata_matrix = torch.Tensor(batch_size,seq_length)
     local rdata_matrix = torch.Tensor(batch_size,seq_length)
-    local idx = 0
-    local abadon_data = 0
-    local sent1_length = 0
-    local sent2_length = 0
-    local unk_count = 0
+    local idx,abadon_data,sent1_length,sent2_length,unk_count = 0,0,0,0,0
     while idx < batch_size do
         local line = file:read()
         if line == nil then break end
         local items = stringx.split(line, '\t')
         local sent1_tensor,sent1_len,unk_count1 = sentenceSim.read_tokens_tensor_and_padding(items[3],vocab,seq_length,true,false)
+
         local sent2_tensor,sent2_len,unk_count2 = sentenceSim.read_tokens_tensor_and_padding(items[4],vocab,seq_length,true,false)
         local label
         if label_file == nil then
-            label = sentenceSim.process_label(items[5])
+            label = sentenceSim.process_train_label(items[5])
         else
             label = sentenceSim.process_test_label(label_file:read())
         end
@@ -198,9 +190,9 @@ function sentenceSim.process_test_label(line)
     end
 end
 
--- process labels of development data in finetuning
+-- process labels of training data in finetuning
 
-function sentenceSim.process_label(label_tuple)
+function sentenceSim.process_train_label(label_tuple)
     local c = label_tuple:sub(2,2)
     local v = tonumber(c)
     if v == 2 then
@@ -222,10 +214,9 @@ function sentenceSim.read_unigram(vocab)
     return tensor
 end
 
--- read tensors for sentences
+-- read tokens based on types of LSTM
 
-function sentenceSim.read_tokens_tensor_and_padding(sent,vocab,seq_length,reverse,dec)
-    local tokens_ori = stringx.split(sent, ' ')
+function sentenceSim.read_tokens(dec,tokens_ori)
     local tokens = {}
     if dec then
         tokens[1] = '<s>'
@@ -235,31 +226,54 @@ function sentenceSim.read_tokens_tensor_and_padding(sent,vocab,seq_length,revers
     else
         tokens = tokens_ori
     end
+    return tokens
+end
+
+-- read reverse index
+
+function sentenceSim.calculate_index(reverse,seq_length,token_length,i)
+    local idx = 0
+    if reverse then
+        idx = seq_length - token_length + i
+    else
+        idx = i
+    end
+    return idx
+end
+
+-- address position of token in the embedding repository
+
+function sentenceSim.address_tokens(vocab,tokens,count,i)
+    local token_idx = 0
+    local lower_case_token = string.lower(tokens[i])
+    if not vocab:contains(lower_case_token) then
+        count = count + 1
+        token_idx = vocab.unk_index
+    else
+        token_idx = vocab:index(lower_case_token)
+        vocab:addFrequent(lower_case_token)
+    end
+    return token_idx,count
+end
+
+-- read tensors for sentences
+
+function sentenceSim.read_tokens_tensor_and_padding(sent,vocab,seq_length,reverse,dec)
+    local tokens_ori = stringx.split(sent, ' ')
+    local tokens = sentenceSim.read_tokens(dec,tokens_ori)
     local sent_tensor = torch.Tensor(seq_length):fill(vocab.pad_index)
     local token_length = #tokens
-    local count = 0
+    local outter_count = 0
     if token_length > seq_length then
         return nil
     else
         for i = 1, token_length do
-            local idx = 0
-            if reverse then
-                idx = seq_length - token_length + i
-            else
-                idx = i
-            end
-            local token_idx = 0
-            if not vocab:contains(tokens[i]) then
-                count = count + 1
-                token_idx = vocab.unk_index
-            else
-                token_idx = vocab:index(tokens[i])
-                vocab:addFrequent(tokens[i])
-
-            end
+            local idx = sentenceSim.calculate_index(reverse,seq_length,token_length,i)
+            local token_idx,count = sentenceSim.address_tokens(vocab,tokens,outter_count,i)
+            outter_count = count
             sent_tensor[idx] = token_idx
         end
-    end
 
-    return sent_tensor,token_length,count
+        return sent_tensor,token_length,outter_count
+    end
 end
