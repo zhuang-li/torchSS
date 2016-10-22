@@ -44,6 +44,12 @@ For the data set, we use [PIT corpus](http://www.cis.upenn.edu/ xwe/ semeval2015
 
 This experiment involves two phases,unsupervised pre-training and supervised fine-tuning. 
 
+We use seq2seq model[[1]](https://arxiv.org/pdf/1409.3215v3.pdf) to do pre-training. The encoder encodes a sentence without out-of-vocabulary tokens and decoder decodes itself. The architecture is as the following figure:
+![seq2seq](http://i64.tinypic.com/30136te.png)
+
+Then we perserve the model of encoder. During fine-tuning, we use a Siamese LSTM[[2]](http://www.mit.edu/~jonasm/info/MuellerThyagarajan_AAAI16.pdf) to predict semantic similarity between sentences. To learn this model, instead of randomly initializing model parameters , we adopt the parameters of the encoder perserved from pre-training. And we learn the model towards our objective. The architecture is as the following figure:
+![siamese](http://i64.tinypic.com/30136te.png)
+
 ### Pre-train
 To do unsupervised pre-training for representation learning task,
 run:
