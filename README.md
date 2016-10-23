@@ -44,11 +44,11 @@ For the data set, we use [PIT corpus](http://www.cis.upenn.edu/ xwe/ semeval2015
 
 This experiment involves two phases, unsupervised pre-training and supervised fine-tuning. 
 
-We use seq2seq model[[1]](https://arxiv.org/pdf/1409.3215v3.pdf) to do pre-training. The encoder encodes a sentence without out-of-vocabulary(OOV) tokens and decoder decodes the sentence itself. After pre-training, we preserve the model parameters of the encoder.
+We use seq2seq model[[1]](https://arxiv.org/pdf/1409.3215v3.pdf) to do pre-training. The encoder encodes a standard sentence with only few out-of-vocabulary(OOV) tokens and decoder decodes the sentence itself. After pre-training, we preserve the model parameters of the encoder.
 The architecture is as the following figure:
 ![seq2seq](https://github.com/deathlee/torchSS/blob/master/figs/seq2seqLSTM.png)
 
-During fine-tuning, we use a Siamese LSTM[[2]](http://www.mit.edu/~jonasm/info/MuellerThyagarajan_AAAI16.pdf) to predict semantic similarity between sentences. To learn this model, instead of randomly initializing model parameters , we initialize the model with the parameters of the encoder preserved from pre-training. Then we learn the model towards our fine-tuning objective. 
+During fine-tuning, we use a Siamese LSTM[[2]](http://www.mit.edu/~jonasm/info/MuellerThyagarajan_AAAI16.pdf) to predict semantic similarity between sentences. To learn this model, instead of randomly initializing model parameters, we initialize the model with the parameters of the encoder preserved from pre-training. Then we learn the model towards our fine-tuning objective. 
 The architecture is as the following figure:
 
 ![siamese](https://github.com/deathlee/torchSS/blob/master/figs/SiameseLSTM.png)
