@@ -2,11 +2,11 @@ Normalization with End-to-End Attention Model for Learning Tweet Similarity
 ===========================================================================
 ## About this code
 
-This code was developed by me for our paper *Normalization with End-to-End Attention Model for Learning Tweet Similarity*. However， it is only an implementation for the original idea. We've already modified it and migrated our code to another platform. The final version of code along with the explanation of ideas and the full experiment results for the paper would be released after paper published.
+This code was developed by me for our paper *Normalization with End-to-End Attention Model for Learning Tweet Similarity*. In this paper, we propose a novel approach to improve the performance of deep semantic similarity models with unsupervised pre-training. However, this code is only an implementation for the original idea. We've already modified it and migrated our code to another platform. The final version of code along with the explanation of ideas and the full experiment results for the paper would be released after paper published.
 
 ## For the Code Reviewers of MILA
 
-Although it is not an official experiment code, I think it is good as the sample code. It is not long ,easy to read and clean.<br>
+Although it is not an official experiment code, I think it is good as the sample code. It is not long, easy to read and clean.<br>
 **Note:** The code in `examples` is written by [Element-Research](https://github.com/Element-Research/), which is only for learning by myself. So if you want to check my code, `sentenceSim` includes the main experiment code, `utils` includes the pre-processing code, `tests` includes gradient check code and `models` includes a LSTM model.
 
 ## Requirements
@@ -44,11 +44,11 @@ For the data set, we use [PIT corpus](http://www.cis.upenn.edu/ xwe/ semeval2015
 
 This experiment involves two phases, unsupervised pre-training and supervised fine-tuning. 
 
-We use seq2seq model[[1]](https://arxiv.org/pdf/1409.3215v3.pdf) to do pre-training. The encoder encodes a sentence without out-of-vocabulary(OOV) tokens and decoder decodes the sentence itself. 
+We use seq2seq model[[1]](https://arxiv.org/pdf/1409.3215v3.pdf) to do pre-training. The encoder encodes a sentence without out-of-vocabulary(OOV) tokens and decoder decodes the sentence itself. After pre-training, we preserve the model parameters of the encoder.
 The architecture is as the following figure:
 ![seq2seq](https://github.com/deathlee/torchSS/blob/master/figs/seq2seqLSTM.png)
 
-After pre-training, we preserve the model parameters of the encoder. During fine-tuning, we use a Siamese LSTM[[2]](http://www.mit.edu/~jonasm/info/MuellerThyagarajan_AAAI16.pdf) to predict semantic similarity between sentences. To learn this model, instead of randomly initializing model parameters , we initialize the model with the parameters of the encoder preserved from pre-training. Then we learn the model towards our fine-tuning objective. 
+During fine-tuning, we use a Siamese LSTM[[2]](http://www.mit.edu/~jonasm/info/MuellerThyagarajan_AAAI16.pdf) to predict semantic similarity between sentences. To learn this model, instead of randomly initializing model parameters , we initialize the model with the parameters of the encoder preserved from pre-training. Then we learn the model towards our fine-tuning objective. 
 The architecture is as the following figure:
 
 ![siamese](https://github.com/deathlee/torchSS/blob/master/figs/SiameseLSTM.png)
