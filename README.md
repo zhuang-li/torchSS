@@ -2,7 +2,7 @@ Normalization with End-to-End Attention Model for Learning Tweet Similarity
 ===========================================================================
 ## About this code
 
-This code was developed by me for our paper *Normalization with End-to-End Attention Model for Learning Tweet Similarity*. In this paper, we propose a novel approach to improve the performance of deep semantic similarity models with unsupervised pre-training. However, this code is only an implementation for the original idea. We've already modified it and migrated our code to another platform. The final version of code along with the explanation of ideas and the full experiment results for the paper would be released after paper published.
+This code was developed by me for our paper *Normalization with End-to-End Attention Model for Learning Tweet Similarity*, which has been submitted to AAAI. In this paper, we propose a novel approach to improve the performance of deep semantic similarity models with unsupervised pre-training. However, this code is only an implementation for the original idea. We've already modified it and migrated our code to another platform. The final version of code along with the explanation of ideas and the full experiment results for the paper would be released after paper published.
 
 ## For the Code Reviewers of MILA
 
