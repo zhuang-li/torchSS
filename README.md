@@ -48,7 +48,7 @@ We use seq2seq model[[1]](https://arxiv.org/pdf/1409.3215v3.pdf) to do pre-train
 The architecture is as the following figure:
 ![seq2seq](https://github.com/deathlee/torchSS/blob/master/figs/seq2seqLSTM.png)
 
-Then we perserve the model of the encoder. During fine-tuning, we use a Siamese LSTM[[2]](http://www.mit.edu/~jonasm/info/MuellerThyagarajan_AAAI16.pdf) to predict semantic similarity between sentences. To learn this model, instead of randomly initializing model parameters , we adopt the parameters of the encoder perserved from pre-training. And we learn the model towards our objective. 
+After pre-training, we preserve the model parameters of the encoder. During fine-tuning, we use a Siamese LSTM[[2]](http://www.mit.edu/~jonasm/info/MuellerThyagarajan_AAAI16.pdf) to predict semantic similarity between sentences. To learn this model, instead of randomly initializing model parameters , we initialize the model with the parameters of the encoder preserved from pre-training. Then we learn the model towards our fine-tuning objective. 
 The architecture is as the following figure:
 
 ![siamese](https://github.com/deathlee/torchSS/blob/master/figs/SiameseLSTM.png)
